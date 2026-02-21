@@ -1,21 +1,27 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
+const taskStatus = v.union(v.literal("pending"), v.literal("in_progress"), v.literal("completed"), v.literal("cancelled"));
+const taskPriority = v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.literal("critical"));
+
 // Get all tasks with optional filtering
 export const getAll = query({
   args: {
-    status: v.optional(v.union(v.literal("pending"), v.literal("in_progress"), v.literal("completed"), v.literal("cancelled"))),
+    status: v.optional(taskStatus),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    let query = ctx.db.query("tasks").order("desc");
+    const limit = args.limit ?? 100;
     
     if (args.status) {
-      query = query.withIndex("by_status", (q) => q.eq("status", args.status));
+      return await ctx.db
+        .query("tasks")
+        .withIndex("by_status", (q) => q.eq("status", args.status!))
+        .order("desc")
+        .take(limit);
     }
     
-    const tasks = await query.take(args.limit ?? 100);
-    return tasks;
+    return await ctx.db.query("tasks").order("desc").take(limit);
   },
 });
 
@@ -29,9 +35,7 @@ export const getById = query({
 
 // Get tasks by status
 export const getByStatus = query({
-  args: { 
-    status: v.union(v.literal("pending"), v.literal("in_progress"), v.literal("completed"), v.literal("cancelled")) 
-  },
+  args: { status: taskStatus },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("tasks")
@@ -46,8 +50,8 @@ export const create = mutation({
   args: {
     title: v.string(),
     description: v.optional(v.string()),
-    status: v.optional(v.union(v.literal("pending"), v.literal("in_progress"), v.literal("completed"), v.literal("cancelled"))),
-    priority: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.literal("critical"))),
+    status: v.optional(taskStatus),
+    priority: v.optional(taskPriority),
     assignedTo: v.optional(v.string()),
     dueDate: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),
@@ -74,8 +78,8 @@ export const update = mutation({
     id: v.id("tasks"),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
-    status: v.optional(v.union(v.literal("pending"), v.literal("in_progress"), v.literal("completed"), v.literal("cancelled"))),
-    priority: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.literal("critical"))),
+    status: v.optional(taskStatus),
+    priority: v.optional(taskPriority),
     assignedTo: v.optional(v.string()),
     dueDate: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),

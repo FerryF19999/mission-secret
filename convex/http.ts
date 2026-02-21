@@ -1,5 +1,6 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
+import { api } from "./_generated/api";
 
 const http = httpRouter();
 
@@ -12,7 +13,7 @@ http.route({
       const body = await request.json();
       
       // Log the incoming webhook
-      await ctx.runMutation("activityLog:create", {
+      await ctx.runMutation(api.activityLog.create, {
         runId: body.runId || `webhook-${Date.now()}`,
         action: "webhook_received",
         source: "openclaw",
@@ -25,7 +26,7 @@ http.route({
       // Handle different event types
       switch (body.type) {
         case "task_created":
-          await ctx.runMutation("tasks:create", {
+          await ctx.runMutation(api.tasks.create, {
             title: body.title,
             description: body.description,
             priority: body.priority || "medium",
@@ -35,7 +36,7 @@ http.route({
           break;
 
         case "memory_created":
-          await ctx.runMutation("memories:create", {
+          await ctx.runMutation(api.memories.create, {
             agentId: body.agentId,
             type: body.memoryType || "fact",
             content: body.content,
@@ -46,7 +47,7 @@ http.route({
           break;
 
         case "content_created":
-          await ctx.runMutation("contentItems:create", {
+          await ctx.runMutation(api.contentItems.create, {
             title: body.title,
             type: body.contentType || "post",
             platform: body.platform,
@@ -56,7 +57,7 @@ http.route({
           break;
 
         case "event_created":
-          await ctx.runMutation("scheduledEvents:create", {
+          await ctx.runMutation(api.scheduledEvents.create, {
             title: body.title,
             description: body.description,
             startTime: body.startTime,
@@ -69,7 +70,7 @@ http.route({
 
         case "agent_status_update":
           if (body.agentId) {
-            await ctx.runMutation("agents:setStatus", {
+            await ctx.runMutation(api.agents.setStatus, {
               id: body.agentId,
               status: body.status || "idle",
             });
