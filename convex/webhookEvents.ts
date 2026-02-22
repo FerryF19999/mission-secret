@@ -195,7 +195,7 @@ export const handleTaskCreated = internalMutation({
       priority: args.priority || "medium",
       assignedTo: args.assignedTo,
       tags: args.tags || [],
-      status: "todo",
+      status: "pending",
       createdAt: now,
       updatedAt: now,
     });
