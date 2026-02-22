@@ -35,12 +35,11 @@ http.route({
         },
       });
 
-      // Also update agent status (Team) on activity
+      // Also update agent status (Team) on activity - direct db
       if (body.agentId) {
         const agents = await ctx.db.query("agents").collect();
-        const agent = agents.find((a: any) => a.handle === body.agentId || a.name.toLowerCase() === body.agentId.toLowerCase());
+        const agent = agents.find((a: any) => a.handle === body.agentId || (a.name && a.name.toLowerCase() === body.agentId.toLowerCase()));
         if (agent) {
-          // Set status to "busy" if running task, "active" if just activity
           const newStatus = body.type === "agent_run_started" ? "busy" : "active";
           await ctx.db.patch(agent._id, {
             status: newStatus,
@@ -52,8 +51,8 @@ http.route({
       // Handle different event types
       switch (body.type) {
         case "agent_run_started":
-          // Create agent run
-          await ctx.runMutation((api as any).agentRuns.create, {
+          // Create agent run - use direct db access
+          await ctx.db.insert("agentRuns", {
             runId: body.runId,
             sessionKey: body.sessionKey,
             label: body.label,
@@ -61,17 +60,22 @@ http.route({
             agentName: body.agentName || body.agentId,
             task: body.task,
             status: body.status || "running",
-            startedAt: body.startedAt,
+            startedAt: body.startedAt || Date.now(),
+            completedAt: undefined,
+            result: undefined,
+            resultFiles: [],
           });
 
           // Auto-create task in Tasks table
-          await ctx.runMutation((api as any).tasks.create, {
+          await ctx.db.insert("tasks", {
             title: body.task,
             description: `Agent: ${body.agentName || body.agentId} | Run: ${body.runId}`,
             status: "in_progress",
             priority: "medium",
             assignedTo: body.agentName || body.agentId,
             tags: ["auto-generated", "agent-run"],
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
           });
           break;
 
@@ -82,45 +86,55 @@ http.route({
           });
           break;
 
-        case "agent_run_completed":
-          await ctx.runMutation((api as any).agentRuns.completeByRunId, {
-            runId: body.runId,
-            status: "completed",
-            result: body.result,
-          });
+        case "agent_run_completed": {
+          // Update agent run - direct db
+          const docC = await ctx.db
+            .query("agentRuns")
+            .withIndex("by_runId", (q) => q.eq("runId", body.runId))
+            .first();
+          if (docC) {
+            await ctx.db.patch(docC._id, {
+              status: "completed",
+              result: body.result,
+              completedAt: Date.now(),
+            });
+          }
 
           // Update linked task to completed
-          // Note: we need to find the task by description containing runId and update it.
-          // For simplicity, we store runId in tags or description. We'll query tasks table.
-          {
-            const tasks = await ctx.db.query("tasks").collect();
-            const linked = tasks.find(
-              (t: any) => t.description && t.description.includes(`Run: ${body.runId}`)
-            );
-            if (linked) {
-              await ctx.db.patch(linked._id, { status: "completed" });
-            }
+          const tasksC = await ctx.db.query("tasks").collect();
+          const linkedC = tasksC.find(
+            (t: any) => t.description && t.description.includes(`Run: ${body.runId}`)
+          );
+          if (linkedC) {
+            await ctx.db.patch(linkedC._id, { status: "completed", updatedAt: Date.now() });
           }
           break;
+        }
 
-        case "agent_run_failed":
-          await ctx.runMutation((api as any).agentRuns.completeByRunId, {
-            runId: body.runId,
-            status: "failed",
-            result: body.error || body.result,
-          });
+        case "agent_run_failed": {
+          // Update agent run - direct db
+          const docF = await ctx.db
+            .query("agentRuns")
+            .withIndex("by_runId", (q) => q.eq("runId", body.runId))
+            .first();
+          if (docF) {
+            await ctx.db.patch(docF._id, {
+              status: "failed",
+              result: body.error || body.result,
+              completedAt: Date.now(),
+            });
+          }
 
-          // Update linked task to cancelled/failed
-          {
-            const tasks = await ctx.db.query("tasks").collect();
-            const linked = tasks.find(
-              (t: any) => t.description && t.description.includes(`Run: ${body.runId}`)
-            );
-            if (linked) {
-              await ctx.db.patch(linked._id, { status: "cancelled" });
-            }
+          // Update linked task to cancelled
+          const tasksF = await ctx.db.query("tasks").collect();
+          const linkedF = tasksF.find(
+            (t: any) => t.description && t.description.includes(`Run: ${body.runId}`)
+          );
+          if (linkedF) {
+            await ctx.db.patch(linkedF._id, { status: "cancelled", updatedAt: Date.now() });
           }
           break;
+        }
 
         case "agent_run_log":
           await ctx.runMutation(api.activityLog.create, {
