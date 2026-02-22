@@ -93,6 +93,14 @@ http.route({
           });
         }
 
+        case "agent_run_file_remove": {
+          await ctx.runMutation((api as any).agentRuns.removeFileByRunId, {
+            runId: body.runId,
+            storageId: body.storageId,
+          });
+          break;
+        }
+
         case "agent_run_file_commit": {
           // After uploading to uploadUrl, client sends storageId + metadata to attach it to run.
           await ctx.runMutation((api as any).agentRuns.addFileByRunId, {
