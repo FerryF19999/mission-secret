@@ -38,6 +38,7 @@ http.route({
       // Handle different event types
       switch (body.type) {
         case "agent_run_started":
+          // Create agent run
           await ctx.runMutation((api as any).agentRuns.create, {
             runId: body.runId,
             sessionKey: body.sessionKey,
@@ -47,6 +48,16 @@ http.route({
             task: body.task,
             status: body.status || "running",
             startedAt: body.startedAt,
+          });
+
+          // Auto-create task in Tasks table
+          await ctx.runMutation((api as any).tasks.create, {
+            title: body.task,
+            description: `Agent: ${body.agentName || body.agentId} | Run: ${body.runId}`,
+            status: "in_progress",
+            priority: "medium",
+            assignedTo: body.agentName || body.agentId,
+            tags: ["auto-generated", "agent-run"],
           });
           break;
 
@@ -63,6 +74,19 @@ http.route({
             status: "completed",
             result: body.result,
           });
+
+          // Update linked task to completed
+          // Note: we need to find the task by description containing runId and update it.
+          // For simplicity, we store runId in tags or description. We'll query tasks table.
+          {
+            const tasks = await ctx.db.query("tasks").collect();
+            const linked = tasks.find(
+              (t: any) => t.description && t.description.includes(`Run: ${body.runId}`)
+            );
+            if (linked) {
+              await ctx.db.patch(linked._id, { status: "completed" });
+            }
+          }
           break;
 
         case "agent_run_failed":
@@ -71,6 +95,17 @@ http.route({
             status: "failed",
             result: body.error || body.result,
           });
+
+          // Update linked task to cancelled/failed
+          {
+            const tasks = await ctx.db.query("tasks").collect();
+            const linked = tasks.find(
+              (t: any) => t.description && t.description.includes(`Run: ${body.runId}`)
+            );
+            if (linked) {
+              await ctx.db.patch(linked._id, { status: "cancelled" });
+            }
+          }
           break;
 
         case "agent_run_log":
