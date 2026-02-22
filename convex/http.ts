@@ -1,6 +1,5 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
-import { api } from "./_generated/api";
 
 const http = httpRouter();
 
@@ -24,34 +23,23 @@ http.route({
 
       const body = await request.json();
       
-      // Log the incoming webhook
-      await ctx.runMutation(api.activityLog.create, {
-        runId: body.runId || `webhook-${Date.now()}`,
-        action: "webhook_received",
-        source: "openclaw",
-        metadata: {
-          eventType: body.type || "unknown",
-          payload: body,
-        },
-      });
-
-      // Also update agent status (Team) on activity - direct db
-      if (body.agentId) {
-        const agents = await ctx.db.query("agents").collect();
-        const agent = agents.find((a: any) => a.handle === body.agentId || (a.name && a.name.toLowerCase() === body.agentId.toLowerCase()));
-        if (agent) {
-          const newStatus = body.type === "agent_run_started" ? "busy" : "active";
-          await ctx.db.patch(agent._id, {
-            status: newStatus,
-            lastActive: Date.now(),
-          });
-        }
+      // Simple log to activityLog - direct db
+      try {
+        await ctx.db.insert("activityLog", {
+          runId: body.runId || `webhook-${Date.now()}`,
+          action: body.type || "webhook",
+          source: "openclaw",
+          createdAt: Date.now(),
+          metadata: { payload: body },
+        });
+      } catch (e) {
+        // Ignore logging errors
       }
 
       // Handle different event types
       switch (body.type) {
-        case "agent_run_started":
-          // Create agent run - use direct db access
+        case "agent_run_started": {
+          // Create agent run
           await ctx.db.insert("agentRuns", {
             runId: body.runId,
             sessionKey: body.sessionKey,
@@ -78,16 +66,9 @@ http.route({
             updatedAt: Date.now(),
           });
           break;
-
-        case "agent_run_status":
-          await ctx.runMutation((api as any).agentRuns.setStatusByRunId, {
-            runId: body.runId,
-            status: body.status,
-          });
-          break;
+        }
 
         case "agent_run_completed": {
-          // Update agent run - direct db
           const docC = await ctx.db
             .query("agentRuns")
             .withIndex("by_runId", (q) => q.eq("runId", body.runId))
@@ -100,7 +81,6 @@ http.route({
             });
           }
 
-          // Update linked task to completed
           const tasksC = await ctx.db.query("tasks").collect();
           const linkedC = tasksC.find(
             (t: any) => t.description && t.description.includes(`Run: ${body.runId}`)
@@ -112,7 +92,6 @@ http.route({
         }
 
         case "agent_run_failed": {
-          // Update agent run - direct db
           const docF = await ctx.db
             .query("agentRuns")
             .withIndex("by_runId", (q) => q.eq("runId", body.runId))
@@ -125,7 +104,6 @@ http.route({
             });
           }
 
-          // Update linked task to cancelled
           const tasksF = await ctx.db.query("tasks").collect();
           const linkedF = tasksF.find(
             (t: any) => t.description && t.description.includes(`Run: ${body.runId}`)
@@ -136,159 +114,154 @@ http.route({
           break;
         }
 
-        case "agent_run_log":
-          await ctx.runMutation(api.activityLog.create, {
+        case "agent_run_log": {
+          await ctx.db.insert("activityLog", {
             runId: body.runId,
             action: body.action || "log",
             prompt: body.prompt,
             response: body.message || body.response,
             source: body.source || body.agentId || "openclaw",
+            createdAt: Date.now(),
             metadata: body.metadata,
           });
           break;
+        }
 
         case "agent_run_file_init": {
-          // Returns a signed upload URL. Client should PUT bytes to it.
-          const uploadUrl = await ctx.runMutation((api as any).files.generateUploadUrl, {});
+          const uploadUrl = await ctx.storage.generateUploadUrl();
           return new Response(JSON.stringify({ success: true, uploadUrl }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
         }
 
-        case "agent_run_file_remove": {
-          await ctx.runMutation((api as any).agentRuns.removeFileByRunId, {
-            runId: body.runId,
-            storageId: body.storageId,
-          });
-          break;
-        }
-
         case "agent_run_file_commit": {
-          // After uploading to uploadUrl, client sends storageId + metadata to attach it to run.
-          await ctx.runMutation((api as any).agentRuns.addFileByRunId, {
-            runId: body.runId,
-            storageId: body.storageId,
-            filename: body.filename || `file-${Date.now()}`,
-            contentType: body.contentType,
-            size: body.size,
-          });
-
-          await ctx.runMutation(api.activityLog.create, {
-            runId: body.runId,
-            action: "file",
-            response: `Attached file: ${body.filename || "(unnamed)"}`,
-            source: body.source || body.agentId || "openclaw",
-            metadata: {
-              filename: body.filename,
+          // Add file to agentRun's resultFiles array
+          const doc = await ctx.db
+            .query("agentRuns")
+            .withIndex("by_runId", (q) => q.eq("runId", body.runId))
+            .first();
+          if (doc) {
+            const files = (doc.resultFiles as any[]) || [];
+            files.push({
+              storageId: body.storageId,
+              filename: body.filename || `file-${Date.now()}`,
               contentType: body.contentType,
               size: body.size,
-              storageId: body.storageId,
-            },
-          });
-          break;
-        }
-
-        case "agent_run_file": {
-          // Small file shortcut (base64). Note: Convex action input limit is ~1MiB.
-          const bin = Buffer.from(body.dataBase64, "base64");
-          if (bin.length > 900_000) {
-            return new Response(
-              JSON.stringify({
-                success: false,
-                error: "file_too_large_for_base64",
-                hint: "Use agent_run_file_init + uploadUrl PUT + agent_run_file_commit",
-              }),
-              { status: 413, headers: { "Content-Type": "application/json" } }
-            );
+              createdAt: Date.now(),
+            });
+            await ctx.db.patch(doc._id, { resultFiles: files });
           }
-
-          const blob = new Blob([bin], { type: body.contentType || "application/octet-stream" });
-          const storageId = await ctx.storage.store(blob);
-
-          await ctx.runMutation((api as any).agentRuns.addFileByRunId, {
-            runId: body.runId,
-            storageId,
-            filename: body.filename || `file-${Date.now()}`,
-            contentType: body.contentType,
-            size: body.size || bin.length,
-          });
-
-          await ctx.runMutation(api.activityLog.create, {
-            runId: body.runId,
-            action: "file",
-            response: `Stored file: ${body.filename || "(unnamed)"}`,
-            source: body.source || body.agentId || "openclaw",
-            metadata: {
-              filename: body.filename,
-              contentType: body.contentType,
-              size: body.size || bin.length,
-              storageId,
-            },
-          });
           break;
         }
-        case "task_created":
-          await ctx.runMutation(api.tasks.create, {
+
+        case "agent_run_file_remove": {
+          // Remove file from agentRun's resultFiles array
+          const doc = await ctx.db
+            .query("agentRuns")
+            .withIndex("by_runId", (q) => q.eq("runId", body.runId))
+            .first();
+          if (doc) {
+            const files = ((doc.resultFiles as any[]) || []).filter(
+              (f: any) => f.storageId !== body.storageId
+            );
+            await ctx.db.patch(doc._id, { resultFiles: files });
+          }
+          break;
+        }
+
+        case "task_created": {
+          await ctx.db.insert("tasks", {
             title: body.title,
             description: body.description,
             priority: body.priority || "medium",
             assignedTo: body.assignedTo,
-            tags: body.tags,
+            tags: body.tags || [],
+            status: "todo",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
           });
 
-          // Auto-create calendar event if dueDate is provided
           if (body.dueDate) {
-            await ctx.runMutation(api.scheduledEvents.create, {
+            await ctx.db.insert("scheduledEvents", {
               title: `Task: ${body.title}`,
               description: body.description || `Priority: ${body.priority || "medium"}`,
               startTime: body.dueDate,
-              endTime: body.dueDate + 60 * 60 * 1000, // 1 hour later
+              endTime: body.dueDate + 60 * 60 * 1000,
               type: "task",
+              createdAt: Date.now(),
             });
           }
           break;
+        }
 
-        case "memory_created":
-          await ctx.runMutation(api.memories.create, {
+        case "memory_created": {
+          await ctx.db.insert("memories", {
             agentId: body.agentId,
             type: body.memoryType || "fact",
             content: body.content,
             source: body.source,
-            tags: body.tags,
-            importance: body.importance,
+            tags: body.tags || [],
+            importance: body.importance || 5,
+            createdAt: Date.now(),
           });
           break;
+        }
 
-        case "content_created":
-          await ctx.runMutation(api.contentItems.create, {
+        case "content_created": {
+          await ctx.db.insert("contentItems", {
             title: body.title,
             type: body.contentType || "post",
             platform: body.platform,
             content: body.content,
-            tags: body.tags,
+            status: "draft",
+            tags: body.tags || [],
+            scheduledFor: body.scheduledFor,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
           });
-          break;
 
-        case "event_created":
-          await ctx.runMutation(api.scheduledEvents.create, {
+          if (body.scheduledFor) {
+            await ctx.db.insert("scheduledEvents", {
+              title: `Content: ${body.title}`,
+              description: `${body.platform || "post"} - ${body.status || "draft"}`,
+              startTime: body.scheduledFor,
+              endTime: body.scheduledFor + 30 * 60 * 1000,
+              type: "content",
+              createdAt: Date.now(),
+            });
+          }
+          break;
+        }
+
+        case "event_created": {
+          await ctx.db.insert("scheduledEvents", {
             title: body.title,
             description: body.description,
             startTime: body.startTime,
             endTime: body.endTime,
-            type: body.eventType || "event",
-            attendees: body.attendees,
-            location: body.location,
+            type: body.eventType || "general",
+            createdAt: Date.now(),
           });
           break;
+        }
 
-        case "agent_status_update":
-          if (body.agentId) {
-            await ctx.runMutation(api.agents.setStatus, {
-              id: body.agentId,
-              status: body.status || "idle",
+        case "agent_status_update": {
+          const agents = await ctx.db.query("agents").collect();
+          const agent = agents.find(
+            (a: any) => a.handle === body.agentId || (a.name && a.name.toLowerCase() === body.agentId.toLowerCase())
+          );
+          if (agent) {
+            await ctx.db.patch(agent._id, {
+              status: body.status,
+              lastActive: Date.now(),
             });
           }
+          break;
+        }
+
+        default:
+          // Unknown event type - just log it
           break;
       }
 
@@ -296,28 +269,12 @@ http.route({
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
-    } catch (error) {
-      console.error("Webhook error:", error);
-      return new Response(
-        JSON.stringify({ success: false, error: String(error) }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+    } catch (e: any) {
+      return new Response(JSON.stringify({ success: false, error: String(e) }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
-  }),
-});
-
-// Health check endpoint
-http.route({
-  path: "/health",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    return new Response(JSON.stringify({ status: "ok", timestamp: Date.now() }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
   }),
 });
 
