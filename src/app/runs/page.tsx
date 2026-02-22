@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Card } from "@/components/Card";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 
 const statuses = ["all", "queued", "running", "completed", "failed"] as const;
 
@@ -18,24 +18,40 @@ export default function RunsPage() {
   const [fileText, setFileText] = useState<string>("");
   const [fileLoading, setFileLoading] = useState<boolean>(false);
   const [fileError, setFileError] = useState<string>("");
+  const [componentError, setComponentError] = useState<string>("");
 
   const [agentFilter, setAgentFilter] = useState<string>("all");
 
-  const runs = useQuery((api as any).agentRuns.getRecent, {
-    limit: 100,
-    status: status === "all" ? undefined : status,
-    agentId: agentFilter === "all" ? undefined : agentFilter,
-  });
+  // Add error boundary for queries
+  let runs, logs, files;
+  try {
+    runs = useQuery((api as any).agentRuns.getRecent, {
+      limit: 100,
+      status: status === "all" ? undefined : status,
+      agentId: agentFilter === "all" ? undefined : agentFilter,
+    });
+  } catch (e: any) {
+    runs = [];
+    setComponentError(e?.message || "Error loading runs");
+  }
 
-  const logs = useQuery(
-    api.activityLog.getByRunId,
-    selectedRunId ? { runId: selectedRunId } : "skip"
-  );
+  try {
+    logs = useQuery(
+      api.activityLog.getByRunId,
+      selectedRunId ? { runId: selectedRunId } : "skip"
+    );
+  } catch (e: any) {
+    logs = [];
+  }
 
-  const files = useQuery(
-    (api as any).agentRuns.getFileUrlsByRunId,
-    selectedRunId ? { runId: selectedRunId } : "skip"
-  );
+  try {
+    files = useQuery(
+      (api as any).agentRuns.getFileUrlsByRunId,
+      selectedRunId ? { runId: selectedRunId } : "skip"
+    );
+  } catch (e: any) {
+    files = [];
+  }
 
   // Reset file preview when switching runs
   useEffect(() => {
@@ -101,7 +117,25 @@ export default function RunsPage() {
 
   return (
     <div className="p-8 space-y-6">
-      <div className="flex items-center justify-between gap-6">
+      {componentError && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+          <p className="text-red-400">Error: {componentError}</p>
+          <button 
+            onClick={() => setComponentError("")}
+            className="mt-2 text-sm text-red-300 hover:underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <Suspense fallback={
+        <div className="flex items-center justify-center p-12">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          <span className="ml-2 text-muted-foreground">Loading...</span>
+        </div>
+      }>
+        <div className="flex items-center justify-between gap-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Runs</h1>
           <p className="text-muted-foreground mt-1">
@@ -371,6 +405,7 @@ export default function RunsPage() {
           and <span className="font-mono">agent_run_completed</span>.
         </p>
       </Card>
+      </Suspense>
     </div>
   );
 }
