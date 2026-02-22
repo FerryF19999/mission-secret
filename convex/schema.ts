@@ -24,6 +24,8 @@ export default defineSchema({
     handle: v.string(),
     avatar: v.optional(v.string()),
     role: v.string(),
+    description: v.optional(v.string()),
+    color: v.optional(v.string()),
     status: v.union(v.literal("active"), v.literal("idle"), v.literal("offline"), v.literal("busy")),
     capabilities: v.array(v.string()),
     lastActive: v.number(),
