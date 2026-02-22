@@ -169,29 +169,29 @@ export default function RunsPage() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <Card padding="none" className="xl:col-span-2">
           <div className="divide-y divide-border">
-            {filtered.map((r: any) => (
+            {(filtered ?? []).map((r: any) => (
               <button
-                key={r._id}
-                onClick={() => setSelectedRunId(r.runId)}
+                key={r?._id || r?.runId || Math.random()}
+                onClick={() => r?.runId && setSelectedRunId(r.runId)}
                 className={
                   "w-full text-left p-4 hover:bg-muted/50 transition-colors " +
-                  (selectedRunId === r.runId ? "bg-muted/40" : "")
+                  (selectedRunId === r?.runId ? "bg-muted/40" : "")
                 }
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-3">
-                      <span className="font-semibold truncate">{r.task}</span>
-                      <StatusPill status={r.status} />
+                      <span className="font-semibold truncate">{r?.task || "Unknown task"}</span>
+                      <StatusPill status={r?.status || "unknown"} />
                     </div>
                     <div className="text-sm text-muted-foreground mt-1">
-                      <span className="font-mono">{r.agentName}</span>
+                      <span className="font-mono">{r?.agentName || "unknown"}</span>
                       <span className="mx-2">•</span>
-                      <span className="font-mono">{r.runId}</span>
+                      <span className="font-mono">{r?.runId || "N/A"}</span>
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground font-mono whitespace-nowrap">
-                    {new Date(r.startedAt).toLocaleString()}
+                    {r?.startedAt ? new Date(r.startedAt).toLocaleString() : "N/A"}
                   </div>
                 </div>
               </button>
@@ -224,28 +224,29 @@ export default function RunsPage() {
               <div>
                 <h3 className="text-sm font-semibold mb-2">Files</h3>
                 <div className="space-y-2">
-                  {(files ?? []).map((f: any, idx: number) => (
-                    <div key={f.storageId + idx} className="border border-border rounded-lg bg-muted/30">
+                  {files && files.length > 0 ? (
+                    files.map((f: any, idx: number) => (
+                    <div key={f?.storageId + idx || Math.random()} className="border border-border rounded-lg bg-muted/30">
                       <button
-                        onClick={() => setSelectedFile(f)}
+                        onClick={() => f && setSelectedFile(f)}
                         className={
                           "w-full text-left p-3 hover:bg-muted/40 transition-colors rounded-lg " +
-                          (selectedFile?.storageId === f.storageId ? "bg-muted/40" : "")
+                          (selectedFile?.storageId === f?.storageId ? "bg-muted/40" : "")
                         }
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm font-medium truncate">{f.filename}</span>
+                          <span className="text-sm font-medium truncate">{f?.filename || "Unknown"}</span>
                           <span className="text-xs font-mono text-muted-foreground whitespace-nowrap">
-                            {f.size ? `${Math.round(f.size / 1024)} KB` : ""}
+                            {f?.size ? `${Math.round(f.size / 1024)} KB` : ""}
                           </span>
                         </div>
                         <div className="text-xs text-muted-foreground font-mono mt-1 truncate">
-                          {f.contentType || "file"}
+                          {f?.contentType || "file"}
                         </div>
                       </button>
                     </div>
-                  ))}
-                  {files && files.length === 0 && (
+                    ))
+                  ) : (
                     <p className="text-sm text-muted-foreground">No files yet.</p>
                   )}
                 </div>
@@ -336,22 +337,23 @@ export default function RunsPage() {
               <div>
                 <h3 className="text-sm font-semibold mb-2">Logs</h3>
                 <div className="space-y-3">
-                  {(logs ?? []).map((l) => (
-                    <div key={l._id} className="border border-border rounded-lg p-3 bg-muted/30">
+                  {logs && logs.length > 0 ? (
+                    logs.map((l: any) => (
+                    <div key={l?._id || Math.random()} className="border border-border rounded-lg p-3 bg-muted/30">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-mono text-muted-foreground">{l.action}</span>
+                        <span className="text-xs font-mono text-muted-foreground">{l?.action || "unknown"}</span>
                         <span className="text-xs font-mono text-muted-foreground">
-                          {new Date(l.createdAt).toLocaleTimeString()}
+                          {l?.createdAt ? new Date(l.createdAt).toLocaleTimeString() : "N/A"}
                         </span>
                       </div>
-                      {l.response && (
+                      {l?.response && (
                         <pre className="mt-2 text-xs whitespace-pre-wrap text-foreground/90">
                           {l.response}
                         </pre>
                       )}
                     </div>
-                  ))}
-                  {logs && logs.length === 0 && (
+                    ))
+                  ) : (
                     <p className="text-sm text-muted-foreground">No logs for this run yet.</p>
                   )}
                 </div>
