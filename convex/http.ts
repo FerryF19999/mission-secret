@@ -10,6 +10,18 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
+      const expected = process.env.OPENCLAW_WEBHOOK_TOKEN || "123bearandbear";
+      const auth = request.headers.get("authorization") || "";
+      if (expected) {
+        const ok = auth.toLowerCase().startsWith("bearer ") && auth.slice(7).trim() === expected;
+        if (!ok) {
+          return new Response(JSON.stringify({ success: false, error: "unauthorized" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+
       const body = await request.json();
       
       // Log the incoming webhook
