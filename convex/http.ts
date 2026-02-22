@@ -23,15 +23,12 @@ http.route({
 
       const body = await request.json();
       
-      // Try a simple insert
-      const testId = await ctx.db.insert("activityLog", {
-        runId: body.runId || "test",
-        action: "webhook_test",
-        source: "test",
-        createdAt: Date.now(),
-      });
-
-      return new Response(JSON.stringify({ success: true, inserted: testId }), {
+      // Webhook received - log for now (db operations via internal mutations)
+      return new Response(JSON.stringify({ 
+        success: true, 
+        received: body.type,
+        message: "Webhook received. Use internal mutations for DB operations." 
+      }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
