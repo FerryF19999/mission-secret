@@ -35,6 +35,20 @@ http.route({
         },
       });
 
+      // Also update agent status (Team) on activity
+      if (body.agentId) {
+        const agents = await ctx.db.query("agents").collect();
+        const agent = agents.find((a: any) => a.handle === body.agentId || a.name.toLowerCase() === body.agentId.toLowerCase());
+        if (agent) {
+          // Set status to "busy" if running task, "active" if just activity
+          const newStatus = body.type === "agent_run_started" ? "busy" : "active";
+          await ctx.db.patch(agent._id, {
+            status: newStatus,
+            lastActive: Date.now(),
+          });
+        }
+      }
+
       // Handle different event types
       switch (body.type) {
         case "agent_run_started":
