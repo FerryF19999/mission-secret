@@ -84,8 +84,54 @@ http.route({
           });
           break;
 
+        case "agent_run_file_init": {
+          // Returns a signed upload URL. Client should PUT bytes to it.
+          const uploadUrl = await ctx.runMutation((api as any).files.generateUploadUrl, {});
+          return new Response(JSON.stringify({ success: true, uploadUrl }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        case "agent_run_file_commit": {
+          // After uploading to uploadUrl, client sends storageId + metadata to attach it to run.
+          await ctx.runMutation((api as any).agentRuns.addFileByRunId, {
+            runId: body.runId,
+            storageId: body.storageId,
+            filename: body.filename || `file-${Date.now()}`,
+            contentType: body.contentType,
+            size: body.size,
+          });
+
+          await ctx.runMutation(api.activityLog.create, {
+            runId: body.runId,
+            action: "file",
+            response: `Attached file: ${body.filename || "(unnamed)"}`,
+            source: body.source || body.agentId || "openclaw",
+            metadata: {
+              filename: body.filename,
+              contentType: body.contentType,
+              size: body.size,
+              storageId: body.storageId,
+            },
+          });
+          break;
+        }
+
         case "agent_run_file": {
+          // Small file shortcut (base64). Note: Convex action input limit is ~1MiB.
           const bin = Buffer.from(body.dataBase64, "base64");
+          if (bin.length > 900_000) {
+            return new Response(
+              JSON.stringify({
+                success: false,
+                error: "file_too_large_for_base64",
+                hint: "Use agent_run_file_init + uploadUrl PUT + agent_run_file_commit",
+              }),
+              { status: 413, headers: { "Content-Type": "application/json" } }
+            );
+          }
+
           const blob = new Blob([bin], { type: body.contentType || "application/octet-stream" });
           const storageId = await ctx.storage.store(blob);
 
