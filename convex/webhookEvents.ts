@@ -219,7 +219,7 @@ export const handleTaskCreated = internalMutation({
 export const handleContentCreated = internalMutation({
   args: {
     title: v.string(),
-    contentType: v.optional(v.string()),
+    contentType: v.optional(v.union(v.literal("post"), v.literal("article"), v.literal("video"), v.literal("image"), v.literal("thread"))),
     platform: v.optional(v.string()),
     content: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
@@ -231,7 +231,7 @@ export const handleContentCreated = internalMutation({
     // Create content item
     await ctx.db.insert("contentItems", {
       title: args.title,
-      type: args.contentType || "post",
+      type: (args.contentType as "post" | "article" | "video" | "image" | "thread") || "post",
       platform: args.platform,
       content: args.content,
       status: "draft",
