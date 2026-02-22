@@ -23,7 +23,9 @@ export default function RunsPage() {
   const [agentFilter, setAgentFilter] = useState<string>("all");
 
   // Add error boundary for queries
-  let runs, logs, files;
+  let runs: any[] = [];
+  let logs: any[] = [];
+  let files: any[] = [];
   try {
     runs = useQuery((api as any).agentRuns.getRecent, {
       limit: 100,
