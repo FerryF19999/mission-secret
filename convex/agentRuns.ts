@@ -177,6 +177,27 @@ export const getByRunId = query({
   },
 });
 
+export const removeFileByRunId = mutation({
+  args: {
+    runId: v.string(),
+    storageId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const doc: any = await ctx.db
+      .query("agentRuns")
+      .withIndex("by_runId", (q) => q.eq("runId", args.runId))
+      .first();
+
+    if (!doc) throw new Error(`agentRuns.removeFileByRunId: runId not found: ${args.runId}`);
+
+    const files: any[] = (doc.resultFiles ?? []) as any[];
+    const next = files.filter((f) => f.storageId !== args.storageId);
+
+    await ctx.db.patch(doc._id, { resultFiles: next });
+    return doc._id;
+  },
+});
+
 export const getFileUrlsByRunId = query({
   args: { runId: v.string() },
   handler: async (ctx, args) => {
