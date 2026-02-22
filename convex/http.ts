@@ -222,6 +222,17 @@ http.route({
             assignedTo: body.assignedTo,
             tags: body.tags,
           });
+
+          // Auto-create calendar event if dueDate is provided
+          if (body.dueDate) {
+            await ctx.runMutation(api.scheduledEvents.create, {
+              title: `Task: ${body.title}`,
+              description: body.description || `Priority: ${body.priority || "medium"}`,
+              startTime: body.dueDate,
+              endTime: body.dueDate + 60 * 60 * 1000, // 1 hour later
+              type: "task",
+            });
+          }
           break;
 
         case "memory_created":
