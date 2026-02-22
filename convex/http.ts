@@ -8,10 +8,39 @@ http.route({
   path: "/openclaw/event",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    return new Response(JSON.stringify({ success: true, message: "Webhook working!" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    try {
+      const expected = process.env.OPENCLAW_WEBHOOK_TOKEN || "123bearandbear";
+      const auth = request.headers.get("authorization") || "";
+      if (expected) {
+        const ok = auth.toLowerCase().startsWith("bearer ") && auth.slice(7).trim() === expected;
+        if (!ok) {
+          return new Response(JSON.stringify({ success: false, error: "unauthorized" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      const body = await request.json();
+      
+      // Try a simple insert
+      const testId = await ctx.db.insert("activityLog", {
+        runId: body.runId || "test",
+        action: "webhook_test",
+        source: "test",
+        createdAt: Date.now(),
+      });
+
+      return new Response(JSON.stringify({ success: true, inserted: testId }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (e: any) {
+      return new Response(JSON.stringify({ success: false, error: String(e) }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   }),
 });
 
