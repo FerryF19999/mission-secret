@@ -207,7 +207,7 @@ export const handleTaskCreated = internalMutation({
         description: args.description || `Priority: ${args.priority || "medium"}`,
         startTime: args.dueDate,
         endTime: args.dueDate + 60 * 60 * 1000, // 1 hour
-        type: "task",
+        type: "deadline",
         createdAt: now,
       });
     }
