@@ -1,5 +1,6 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 const http = httpRouter();
 
@@ -23,12 +24,113 @@ http.route({
 
       const body = await request.json();
       
-      // Webhook received - log for now (db operations via internal mutations)
-      return new Response(JSON.stringify({ 
-        success: true, 
-        received: body.type,
-        message: "Webhook received. Use internal mutations for DB operations." 
-      }), {
+      // Route to internal mutations based on event type
+      switch (body.type) {
+        case "agent_run_started":
+          await ctx.runMutation((internal as any).webhookEvents.handleAgentRunStarted, {
+            runId: body.runId,
+            sessionKey: body.sessionKey,
+            label: body.label,
+            agentId: body.agentId,
+            agentName: body.agentName,
+            task: body.task,
+            status: body.status,
+            startedAt: body.startedAt,
+          });
+          break;
+
+        case "agent_run_completed":
+          await ctx.runMutation((internal as any).webhookEvents.handleAgentRunCompleted, {
+            runId: body.runId,
+            result: body.result,
+          });
+          break;
+
+        case "agent_run_failed":
+          await ctx.runMutation((internal as any).webhookEvents.handleAgentRunFailed, {
+            runId: body.runId,
+            error: body.error,
+            result: body.result,
+          });
+          break;
+
+        case "agent_run_log":
+          await ctx.runMutation((internal as any).webhookEvents.handleAgentRunLog, {
+            runId: body.runId,
+            action: body.action,
+            prompt: body.prompt,
+            message: body.message,
+            source: body.source,
+            metadata: body.metadata,
+          });
+          break;
+
+        case "agent_run_file_commit":
+          await ctx.runMutation((internal as any).webhookEvents.handleAgentRunFileCommit, {
+            runId: body.runId,
+            storageId: body.storageId,
+            filename: body.filename,
+            contentType: body.contentType,
+            size: body.size,
+          });
+          break;
+
+        case "task_created":
+          await ctx.runMutation((internal as any).webhookEvents.handleTaskCreated, {
+            title: body.title,
+            description: body.description,
+            priority: body.priority,
+            assignedTo: body.assignedTo,
+            tags: body.tags,
+            dueDate: body.dueDate,
+          });
+          break;
+
+        case "content_created":
+          await ctx.runMutation((internal as any).webhookEvents.handleContentCreated, {
+            title: body.title,
+            contentType: body.contentType,
+            platform: body.platform,
+            content: body.content,
+            tags: body.tags,
+            scheduledFor: body.scheduledFor,
+          });
+          break;
+
+        case "memory_created":
+          await ctx.runMutation((internal as any).webhookEvents.handleMemoryCreated, {
+            agentId: body.agentId,
+            memoryType: body.memoryType,
+            content: body.content,
+            source: body.source,
+            tags: body.tags,
+            importance: body.importance,
+          });
+          break;
+
+        case "event_created":
+          await ctx.runMutation((internal as any).webhookEvents.handleEventCreated, {
+            title: body.title,
+            description: body.description,
+            startTime: body.startTime,
+            endTime: body.endTime,
+            eventType: body.eventType,
+          });
+          break;
+
+        case "agent_status_update":
+          await ctx.runMutation((internal as any).webhookEvents.handleAgentStatusUpdate, {
+            agentId: body.agentId,
+            status: body.status,
+          });
+          break;
+
+        default:
+          // Unknown event type - just acknowledge
+          break;
+      }
+
+      return new Response(JSON.stringify({ success: true, type: body.type }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
