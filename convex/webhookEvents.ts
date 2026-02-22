@@ -260,7 +260,7 @@ export const handleContentCreated = internalMutation({
 export const handleMemoryCreated = internalMutation({
   args: {
     agentId: v.optional(v.string()),
-    memoryType: v.optional(v.string()),
+    memoryType: v.optional(v.union(v.literal("fact"), v.literal("insight"), v.literal("conversation"), v.literal("task"))),
     content: v.string(),
     source: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
@@ -269,7 +269,7 @@ export const handleMemoryCreated = internalMutation({
   handler: async (ctx, args) => {
     await ctx.db.insert("memories", {
       agentId: args.agentId,
-      type: args.memoryType || "fact",
+      type: (args.memoryType as "fact" | "insight" | "conversation" | "task") || "fact",
       content: args.content,
       source: args.source,
       tags: args.tags || [],
@@ -306,7 +306,7 @@ export const handleEventCreated = internalMutation({
 export const handleAgentStatusUpdate = internalMutation({
   args: {
     agentId: v.string(),
-    status: v.string(),
+    status: v.union(v.literal("active"), v.literal("idle"), v.literal("offline"), v.literal("busy")),
   },
   handler: async (ctx, args) => {
     const agents = await ctx.db.query("agents").collect();
@@ -315,7 +315,7 @@ export const handleAgentStatusUpdate = internalMutation({
     );
     if (agent) {
       await ctx.db.patch(agent._id, {
-        status: args.status,
+        status: args.status as "active" | "idle" | "offline" | "busy",
         lastActive: Date.now(),
       });
     }
@@ -328,7 +328,7 @@ export const handleAgentRunFileCommit = internalMutation({
     runId: v.string(),
     storageId: v.string(),
     filename: v.optional(v.string()),
-    contentType: v.optional(v.string()),
+    contentType: v.optional(v.union(v.literal("image"), v.literal("video"), v.literal("audio"), v.literal("text"), v.literal("pdf"), v.literal("other"))),
     size: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -341,7 +341,7 @@ export const handleAgentRunFileCommit = internalMutation({
       files.push({
         storageId: args.storageId,
         filename: args.filename || `file-${Date.now()}`,
-        contentType: args.contentType,
+        contentType: args.contentType as string || "other",
         size: args.size,
         createdAt: Date.now(),
       });
