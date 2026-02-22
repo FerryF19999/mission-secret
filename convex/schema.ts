@@ -96,14 +96,21 @@ export default defineSchema({
 
   // Agent runs table - for tracking agent executions
   agentRuns: defineTable({
+    runId: v.string(), // OpenClaw sessions_spawn runId or external correlation id
+    sessionKey: v.optional(v.string()),
+    label: v.optional(v.string()),
+
     agentId: v.string(),
     agentName: v.string(),
+
     task: v.string(),
-    status: v.union(v.literal("running"), v.literal("completed"), v.literal("failed")),
+    status: v.union(v.literal("queued"), v.literal("running"), v.literal("completed"), v.literal("failed")),
+
     result: v.optional(v.string()),
     startedAt: v.number(),
     completedAt: v.optional(v.number()),
   })
+    .index("by_runId", ["runId"])
     .index("by_agent", ["agentId"])
     .index("by_status", ["status"])
     .index("by_started", ["startedAt"]),

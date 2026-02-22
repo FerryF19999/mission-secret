@@ -9,6 +9,7 @@ import {
   Brain,
   FileText,
   Calendar,
+  Activity,
   Settings,
   Zap,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/team", icon: Bot, label: "Team" },
   { href: "/memory", icon: Brain, label: "Memory" },
   { href: "/content", icon: FileText, label: "Content" },
+  { href: "/runs", icon: Activity, label: "Runs" },
   { href: "/calendar", icon: Calendar, label: "Calendar" },
 ];
 

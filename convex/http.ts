@@ -25,6 +25,52 @@ http.route({
 
       // Handle different event types
       switch (body.type) {
+        case "agent_run_started":
+          await ctx.runMutation(api.agentRuns.create, {
+            runId: body.runId,
+            sessionKey: body.sessionKey,
+            label: body.label,
+            agentId: body.agentId,
+            agentName: body.agentName || body.agentId,
+            task: body.task,
+            status: body.status || "running",
+            startedAt: body.startedAt,
+          });
+          break;
+
+        case "agent_run_status":
+          await ctx.runMutation(api.agentRuns.setStatusByRunId, {
+            runId: body.runId,
+            status: body.status,
+          });
+          break;
+
+        case "agent_run_completed":
+          await ctx.runMutation(api.agentRuns.completeByRunId, {
+            runId: body.runId,
+            status: "completed",
+            result: body.result,
+          });
+          break;
+
+        case "agent_run_failed":
+          await ctx.runMutation(api.agentRuns.completeByRunId, {
+            runId: body.runId,
+            status: "failed",
+            result: body.error || body.result,
+          });
+          break;
+
+        case "agent_run_log":
+          await ctx.runMutation(api.activityLog.create, {
+            runId: body.runId,
+            action: body.action || "log",
+            prompt: body.prompt,
+            response: body.message || body.response,
+            source: body.source || body.agentId || "openclaw",
+            metadata: body.metadata,
+          });
+          break;
         case "task_created":
           await ctx.runMutation(api.tasks.create, {
             title: body.title,
