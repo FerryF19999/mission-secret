@@ -26,7 +26,7 @@ http.route({
       // Handle different event types
       switch (body.type) {
         case "agent_run_started":
-          await ctx.runMutation(api.agentRuns.create, {
+          await ctx.runMutation((api as any).agentRuns.create, {
             runId: body.runId,
             sessionKey: body.sessionKey,
             label: body.label,
@@ -39,14 +39,14 @@ http.route({
           break;
 
         case "agent_run_status":
-          await ctx.runMutation(api.agentRuns.setStatusByRunId, {
+          await ctx.runMutation((api as any).agentRuns.setStatusByRunId, {
             runId: body.runId,
             status: body.status,
           });
           break;
 
         case "agent_run_completed":
-          await ctx.runMutation(api.agentRuns.completeByRunId, {
+          await ctx.runMutation((api as any).agentRuns.completeByRunId, {
             runId: body.runId,
             status: "completed",
             result: body.result,
@@ -54,7 +54,7 @@ http.route({
           break;
 
         case "agent_run_failed":
-          await ctx.runMutation(api.agentRuns.completeByRunId, {
+          await ctx.runMutation((api as any).agentRuns.completeByRunId, {
             runId: body.runId,
             status: "failed",
             result: body.error || body.result,
@@ -71,6 +71,34 @@ http.route({
             metadata: body.metadata,
           });
           break;
+
+        case "agent_run_file": {
+          const bin = Buffer.from(body.dataBase64, "base64");
+          const blob = new Blob([bin], { type: body.contentType || "application/octet-stream" });
+          const storageId = await ctx.storage.store(blob);
+
+          await ctx.runMutation((api as any).agentRuns.addFileByRunId, {
+            runId: body.runId,
+            storageId,
+            filename: body.filename || `file-${Date.now()}`,
+            contentType: body.contentType,
+            size: body.size || bin.length,
+          });
+
+          await ctx.runMutation(api.activityLog.create, {
+            runId: body.runId,
+            action: "file",
+            response: `Stored file: ${body.filename || "(unnamed)"}`,
+            source: body.source || body.agentId || "openclaw",
+            metadata: {
+              filename: body.filename,
+              contentType: body.contentType,
+              size: body.size || bin.length,
+              storageId,
+            },
+          });
+          break;
+        }
         case "task_created":
           await ctx.runMutation(api.tasks.create, {
             title: body.title,

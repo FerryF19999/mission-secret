@@ -107,6 +107,20 @@ export default defineSchema({
     status: v.union(v.literal("queued"), v.literal("running"), v.literal("completed"), v.literal("failed")),
 
     result: v.optional(v.string()),
+
+    // Files produced by the run (stored in Convex storage)
+    resultFiles: v.optional(
+      v.array(
+        v.object({
+          storageId: v.string(),
+          filename: v.string(),
+          contentType: v.optional(v.string()),
+          size: v.optional(v.number()),
+          createdAt: v.number(),
+        })
+      )
+    ),
+
     startedAt: v.number(),
     completedAt: v.optional(v.number()),
   })
