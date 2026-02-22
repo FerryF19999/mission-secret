@@ -180,7 +180,7 @@ export const handleTaskCreated = internalMutation({
   args: {
     title: v.string(),
     description: v.optional(v.string()),
-    priority: v.optional(v.string()),
+    priority: v.optional(v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.literal("critical"))),
     assignedTo: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     dueDate: v.optional(v.number()),
@@ -192,7 +192,7 @@ export const handleTaskCreated = internalMutation({
     await ctx.db.insert("tasks", {
       title: args.title,
       description: args.description,
-      priority: args.priority || "medium",
+      priority: (args.priority as "low" | "medium" | "high" | "critical") || "medium",
       assignedTo: args.assignedTo,
       tags: args.tags || [],
       status: "pending",
