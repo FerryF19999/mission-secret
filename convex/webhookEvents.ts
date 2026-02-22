@@ -209,6 +209,7 @@ export const handleTaskCreated = internalMutation({
         endTime: args.dueDate + 60 * 60 * 1000, // 1 hour
         type: "deadline",
         createdAt: now,
+        updatedAt: now,
       });
     }
   },
@@ -247,8 +248,9 @@ export const handleContentCreated = internalMutation({
         description: `${args.platform || "post"} - draft`,
         startTime: args.scheduledFor,
         endTime: args.scheduledFor + 30 * 60 * 1000, // 30 min
-        type: "content",
+        type: "event",
         createdAt: now,
+        updatedAt: now,
       });
     }
   },
@@ -284,16 +286,18 @@ export const handleEventCreated = internalMutation({
     description: v.optional(v.string()),
     startTime: v.number(),
     endTime: v.optional(v.number()),
-    eventType: v.optional(v.string()),
+    eventType: v.optional(v.union(v.literal("meeting"), v.literal("deadline"), v.literal("reminder"), v.literal("event"))),
   },
   handler: async (ctx, args) => {
+    const now = Date.now();
     await ctx.db.insert("scheduledEvents", {
       title: args.title,
       description: args.description,
       startTime: args.startTime,
       endTime: args.endTime || args.startTime + 60 * 60 * 1000,
-      type: args.eventType || "general",
-      createdAt: Date.now(),
+      type: (args.eventType as "meeting" | "deadline" | "reminder" | "event") || "event",
+      createdAt: now,
+      updatedAt: now,
     });
   },
 });
