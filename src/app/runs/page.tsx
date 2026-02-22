@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Card } from "@/components/Card";
@@ -14,6 +14,10 @@ export default function RunsPage() {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<any | null>(null);
+  const [fileText, setFileText] = useState<string>("");
+  const [fileLoading, setFileLoading] = useState<boolean>(false);
+  const [fileError, setFileError] = useState<string>("");
 
   const [agentFilter, setAgentFilter] = useState<string>("all");
 
@@ -32,6 +36,56 @@ export default function RunsPage() {
     (api as any).agentRuns.getFileUrlsByRunId,
     selectedRunId ? { runId: selectedRunId } : "skip"
   );
+
+  // Reset file preview when switching runs
+  useEffect(() => {
+    setSelectedFile(null);
+    setFileText("");
+    setFileError("");
+    setFileLoading(false);
+  }, [selectedRunId]);
+
+  // Fetch previewable text/html/json
+  useEffect(() => {
+    const url = selectedFile?.url as string | undefined;
+    const contentType = (selectedFile?.contentType as string | undefined) || "";
+    const filename = (selectedFile?.filename as string | undefined) || "";
+
+    const isText =
+      contentType.startsWith("text/") ||
+      contentType === "application/json" ||
+      filename.endsWith(".md") ||
+      filename.endsWith(".txt") ||
+      filename.endsWith(".json") ||
+      filename.endsWith(".html") ||
+      filename.endsWith(".htm") ||
+      filename.endsWith(".css") ||
+      filename.endsWith(".js");
+
+    if (!url || !isText) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setFileLoading(true);
+        setFileError("");
+        const res = await fetch(url);
+        const text = await res.text();
+        if (cancelled) return;
+        // Keep preview reasonable
+        setFileText(text.slice(0, 200_000));
+      } catch (e: any) {
+        if (cancelled) return;
+        setFileError(e?.message || String(e));
+      } finally {
+        if (!cancelled) setFileLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFile]);
 
   const filtered = useMemo(() => {
     const list = runs ?? [];
@@ -171,28 +225,112 @@ export default function RunsPage() {
                 <h3 className="text-sm font-semibold mb-2">Files</h3>
                 <div className="space-y-2">
                   {(files ?? []).map((f: any, idx: number) => (
-                    <a
-                      key={f.storageId + idx}
-                      href={f.url || "#"}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block border border-border rounded-lg p-3 bg-muted/30 hover:bg-muted/40 transition-colors"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium truncate">{f.filename}</span>
-                        <span className="text-xs font-mono text-muted-foreground whitespace-nowrap">
-                          {f.size ? `${Math.round(f.size / 1024)} KB` : ""}
-                        </span>
-                      </div>
-                      <div className="text-xs text-muted-foreground font-mono mt-1 truncate">
-                        {f.contentType || "file"}
-                      </div>
-                    </a>
+                    <div key={f.storageId + idx} className="border border-border rounded-lg bg-muted/30">
+                      <button
+                        onClick={() => setSelectedFile(f)}
+                        className={
+                          "w-full text-left p-3 hover:bg-muted/40 transition-colors rounded-lg " +
+                          (selectedFile?.storageId === f.storageId ? "bg-muted/40" : "")
+                        }
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-medium truncate">{f.filename}</span>
+                          <span className="text-xs font-mono text-muted-foreground whitespace-nowrap">
+                            {f.size ? `${Math.round(f.size / 1024)} KB` : ""}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground font-mono mt-1 truncate">
+                          {f.contentType || "file"}
+                        </div>
+                      </button>
+                    </div>
                   ))}
                   {files && files.length === 0 && (
                     <p className="text-sm text-muted-foreground">No files yet.</p>
                   )}
                 </div>
+
+                {/* Preview */}
+                {selectedFile && (
+                  <div className="mt-3 border border-border rounded-lg p-3 bg-muted/20">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-semibold truncate">Preview: {selectedFile.filename}</div>
+                      <a
+                        className="text-xs font-mono text-primary hover:underline"
+                        href={selectedFile.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open
+                      </a>
+                    </div>
+
+                    <div className="mt-3">
+                      {(() => {
+                        const ct = (selectedFile.contentType || "") as string;
+                        const fn = (selectedFile.filename || "") as string;
+                        const url = selectedFile.url as string;
+
+                        const isImg = ct.startsWith("image/") || /\.(png|jpg|jpeg|webp|gif)$/i.test(fn);
+                        const isPdf = ct === "application/pdf" || /\.pdf$/i.test(fn);
+                        const isHtml = ct === "text/html" || /\.(html|htm)$/i.test(fn);
+                        const isText =
+                          ct.startsWith("text/") ||
+                          ct === "application/json" ||
+                          /\.(md|txt|json|css|js)$/i.test(fn);
+
+                        if (isImg) {
+                          return (
+                            <img
+                              src={url}
+                              alt={fn}
+                              className="w-full rounded-md border border-border object-contain max-h-[320px]"
+                            />
+                          );
+                        }
+
+                        if (isPdf) {
+                          return (
+                            <iframe
+                              src={url}
+                              className="w-full h-[320px] rounded-md border border-border bg-background"
+                              title={fn}
+                            />
+                          );
+                        }
+
+                        if (isHtml) {
+                          if (fileLoading) return <p className="text-sm text-muted-foreground">Loading preview…</p>;
+                          if (fileError) return <p className="text-sm text-red-400">{fileError}</p>;
+                          return (
+                            <iframe
+                              sandbox="allow-same-origin"
+                              srcDoc={fileText || ""}
+                              className="w-full h-[320px] rounded-md border border-border bg-white"
+                              title={fn}
+                            />
+                          );
+                        }
+
+                        if (isText) {
+                          if (fileLoading) return <p className="text-sm text-muted-foreground">Loading preview…</p>;
+                          if (fileError) return <p className="text-sm text-red-400">{fileError}</p>;
+                          return (
+                            <pre className="text-xs whitespace-pre-wrap max-h-[320px] overflow-auto p-3 rounded-md border border-border bg-background">
+                              {fileText || "(empty)"}
+                            </pre>
+                          );
+                        }
+
+                        return (
+                          <p className="text-sm text-muted-foreground">
+                            Preview not available for this file type. Use <span className="font-mono">Open</span> to download.
+                          </p>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
