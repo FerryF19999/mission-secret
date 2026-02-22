@@ -10,7 +10,7 @@ export const handleAgentRunStarted = internalMutation({
     agentId: v.string(),
     agentName: v.string(),
     task: v.string(),
-    status: v.optional(v.string()),
+    status: v.optional(v.union(v.literal("queued"), v.literal("running"), v.literal("completed"), v.literal("failed"))),
     startedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -24,7 +24,7 @@ export const handleAgentRunStarted = internalMutation({
       agentId: args.agentId,
       agentName: args.agentName,
       task: args.task,
-      status: args.status || "running",
+      status: (args.status as "queued" | "running" | "completed" | "failed") || "running",
       startedAt: args.startedAt || now,
       completedAt: undefined,
       result: undefined,
