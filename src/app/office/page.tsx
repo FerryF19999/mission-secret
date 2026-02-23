@@ -151,6 +151,17 @@ function randBetween(a: number, b: number) {
   return a + Math.random() * (b - a);
 }
 
+const DOOR_TILES = [YURI_DOOR_TILE, MAIN_TO_RIGHT_DOOR_TILE, KITCHEN_TO_LOUNGE_DOOR_TILE];
+
+function isNearDoor(px: number, py: number, radius = 1.5) {
+  const tx = Math.floor(px / TILE);
+  const ty = Math.floor((py - 4) / TILE);
+  for (const d of DOOR_TILES) {
+    if (Math.abs(tx - d.tx) <= radius && Math.abs(ty - d.ty) <= radius) return true;
+  }
+  return false;
+}
+
 function dirFromDelta(dx: number, dy: number): Dir {
   if (Math.abs(dx) > Math.abs(dy)) return dx < 0 ? "left" : "right";
   return dy < 0 ? "up" : "down";
@@ -1149,6 +1160,17 @@ export default function OfficePage() {
             }
           }
 
+          // If idle near a door, immediately go to desk
+          if (rt.mode === "idle" && isNearDoor(rt.x, rt.y)) {
+            const ws = SEATS[a.key as keyof typeof SEATS];
+            if (ws) {
+              const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: ws.x, y: ws.y });
+              rt.path = path;
+              rt.mode = "walk";
+              rt.returnToDesk = true;
+            }
+          }
+
           if (rt.mode === "idle" && (rt.nextDecisionMs === 0 || now >= rt.nextDecisionMs) && nearTarget) {
             // 70% chance to go back to desk and sit, 30% wander
             if (Math.random() < 0.7) {
@@ -1198,7 +1220,15 @@ export default function OfficePage() {
 
               if (dist < 1.2) rt.path.shift();
               if (!rt.path.length) {
-                if (rt.returnToDesk) {
+                // Never stop near a door — if near one, reroute to own desk
+                if (isNearDoor(rt.x, rt.y)) {
+                  const ws = SEATS[a.key as keyof typeof SEATS];
+                  if (ws) {
+                    const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: ws.x, y: ws.y });
+                    rt.path = path;
+                    rt.returnToDesk = true;
+                  }
+                } else if (rt.returnToDesk) {
                   rt.mode = "sitting";
                   rt.returnToDesk = false;
                 } else {
