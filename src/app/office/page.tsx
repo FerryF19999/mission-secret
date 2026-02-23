@@ -1226,51 +1226,50 @@ export default function OfficePage() {
             }
           }
 
-          if (rt.mode === "walk" || rt.mode === "spawn") {
-            // follow path
+          }
+
+        // === Walk/movement logic (runs for BOTH working and idle agents) ===
+        if (rt.mode === "walk" || rt.mode === "spawn") {
+          if (!rt.path.length) {
+            rt.mode = "idle";
+          } else {
+            const next = rt.path[0];
+            rt.targetX = next.cx;
+            rt.targetY = next.cy;
+            const dx = rt.targetX - rt.x;
+            const dy = rt.targetY - rt.y;
+            const dist = Math.hypot(dx, dy);
+
+            const speed = 22;
+            if (dist > 0.001) {
+              const step = Math.min(dist, speed * dt);
+              rt.x += (dx / dist) * step;
+              rt.y += (dy / dist) * step;
+              rt.dir = dirFromDelta(dx, dy);
+            }
+
+            if (dist < 1.2) rt.path.shift();
             if (!rt.path.length) {
-              // make sure we have a target if none
-              rt.mode = "idle";
-            } else {
-              const next = rt.path[0];
-              rt.targetX = next.cx;
-              rt.targetY = next.cy;
-              const dx = rt.targetX - rt.x;
-              const dy = rt.targetY - rt.y;
-              const dist = Math.hypot(dx, dy);
-
-              const speed = 22; // casual strolling
-              if (dist > 0.001) {
-                const step = Math.min(dist, speed * dt);
-                rt.x += (dx / dist) * step;
-                rt.y += (dy / dist) * step;
-                rt.dir = dirFromDelta(dx, dy);
-              }
-
-              if (dist < 1.2) rt.path.shift();
-              if (!rt.path.length) {
-                // Never stop near a door — if near one, reroute to own desk
-                if (isNearDoor(rt.x, rt.y)) {
-                  const ws = SEATS[a.key as keyof typeof SEATS];
-                  if (ws) {
-                    const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: ws.x, y: ws.y });
-                    rt.path = path;
-                    rt.returnToDesk = true;
-                  }
-                } else if (rt.returnToDesk) {
-                  rt.mode = "sitting";
-                  rt.returnToDesk = false;
-                } else {
-                  rt.mode = "idle";
+              if (isNearDoor(rt.x, rt.y)) {
+                const ws = SEATS[a.key as keyof typeof SEATS];
+                if (ws) {
+                  const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: ws.x, y: ws.y });
+                  rt.path = path;
+                  rt.returnToDesk = true;
                 }
+              } else if (rt.returnToDesk) {
+                rt.mode = "sitting";
+                rt.returnToDesk = false;
+              } else {
+                rt.mode = "idle";
               }
             }
           }
-
-          // keep inside
-          rt.x = clamp(rt.x, 8, INTERNAL_W - 8);
-          rt.y = clamp(rt.y, 24, INTERNAL_H - 8);
         }
+
+        // keep inside
+        rt.x = clamp(rt.x, 8, INTERNAL_W - 8);
+        rt.y = clamp(rt.y, 24, INTERNAL_H - 8);
 
         // Animation + sounds
         const moving = rt.mode === "walk" || rt.mode === "spawn";
