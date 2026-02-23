@@ -89,7 +89,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
     }
   }
   if (cur) lines.push(cur);
-  return lines.slice(0, 3);
+  return lines.slice(0, 2);
 }
 
 function pickAgentFromList(list: any[] | undefined, key: string, label: string) {
@@ -106,7 +106,8 @@ function statusDot(status: AgentStatus) {
   if (status === "active") return "#10b981";
   if (status === "busy") return "#f59e0b";
   if (status === "idle") return "#94a3b8";
-  return "#ef4444";
+  // offline should feel calm/neutral (gray), not alarming red
+  return "#6b7280";
 }
 
 // WIB day/night palette
@@ -264,8 +265,8 @@ export default function OfficePage() {
       <OfficeCanvas agents={live} />
 
       <div className="text-xs text-muted-foreground font-mono">
-        Animations: walk (4 frames), idle (blink/breathe), typing, sparks/code particles when busy, sleep when offline. Day/night
-        palette uses WIB time.
+        Animations: walk (4 frames), idle (blink + very subtle breathe), typing (hands only), minimal particles when busy. Offline desks are
+        empty. Day/night palette uses WIB time.
       </div>
     </div>
   );
@@ -301,27 +302,26 @@ function OfficeCanvas({ agents }: { agents: LiveAgent[] }) {
   }>({ ctx: null, master: null, lastTypeAt: {} });
 
   const layout = useMemo(() => {
-    // world coordinates (pixels). These are "interaction anchors".
-    // Row of desks has depth: chairs slightly below desk.
+    // world coordinates (pixels). Calm, fixed layout: each agent has a dedicated station.
+    // Chairs sit slightly below desks.
     const desks = [
-      { key: "yuri", desk: { x: 90, y: 90 }, chair: { x: 88, y: 112 }, stand: { x: 72, y: 122 } },
-      { key: "jarvis", desk: { x: 150, y: 92 }, chair: { x: 148, y: 114 }, stand: { x: 132, y: 124 } },
-      { key: "friday", desk: { x: 210, y: 90 }, chair: { x: 208, y: 112 }, stand: { x: 192, y: 122 } },
-      { key: "glass", desk: { x: 270, y: 92 }, chair: { x: 268, y: 114 }, stand: { x: 252, y: 124 } },
-      { key: "epstein", desk: { x: 330, y: 90 }, chair: { x: 328, y: 112 }, stand: { x: 312, y: 122 } },
+      { key: "yuri", desk: { x: 90, y: 90 }, chair: { x: 88, y: 112 } },
+      { key: "jarvis", desk: { x: 150, y: 92 }, chair: { x: 148, y: 114 } },
+      { key: "friday", desk: { x: 210, y: 90 }, chair: { x: 208, y: 112 } },
+      { key: "glass", desk: { x: 270, y: 92 }, chair: { x: 268, y: 114 } },
+      { key: "epstein", desk: { x: 330, y: 90 }, chair: { x: 328, y: 112 } },
     ] as const;
 
-    const lounge = [
-      { key: "yuri", spot: { x: 92, y: 168 } },
-      { key: "jarvis", spot: { x: 142, y: 172 } },
-      { key: "friday", spot: { x: 198, y: 168 } },
-      { key: "glass", spot: { x: 246, y: 172 } },
-      { key: "epstein", spot: { x: 304, y: 168 } },
-    ] as const;
+    // Per-desk speech bubble zones (prevents overlap between neighboring desks)
+    const zones = desks.map((d, i) => {
+      const prev = desks[i - 1];
+      const next = desks[i + 1];
+      const minX = prev ? Math.floor((prev.desk.x + d.desk.x) / 2) : 0;
+      const maxX = next ? Math.floor((next.desk.x + d.desk.x) / 2) : 384;
+      return { key: d.key, minX, maxX };
+    });
 
-    const sleepCouch = { x: 60, y: 178 };
-
-    return { desks, lounge, sleepCouch };
+    return { desks, zones };
   }, []);
 
   // Resize canvas
@@ -419,13 +419,23 @@ function OfficeCanvas({ agents }: { agents: LiveAgent[] }) {
 
     let raf = 0;
     let lastT = nowMs();
+    let lastRenderT = lastT;
 
     const rosterLook = LOOK;
 
     const tick = () => {
       const t = nowMs();
+
+      // 30fps cap (calmer + lighter on CPU)
+      if (t - lastRenderT < 33) {
+        lastT = t;
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+
       const dt = clamp((t - lastT) / 1000, 0, 0.05);
       lastT = t;
+      lastRenderT = t;
 
       const dpr = window.devicePixelRatio || 1;
       const cssW = c.clientWidth;
@@ -460,16 +470,13 @@ function OfficeCanvas({ agents }: { agents: LiveAgent[] }) {
 
       for (const a of sorted) {
         const desk = layout.desks.find((d) => d.key === a.key)!;
-        const lounge = layout.lounge.find((d) => d.key === a.key)!;
-        const target =
-          a.status === "active" || a.status === "busy"
-            ? desk.chair
-            : a.status === "idle"
-              ? lounge.spot
-              : layout.sleepCouch;
+
+        // Calm office: agents stay at their desks.
+        // Offline desks are empty (no character drawn).
+        const target = desk.chair;
 
         const s = (animRef.current[a.key] ??= {
-          pos: { ...lounge.spot },
+          pos: { ...target },
           vel: { x: 0, y: 0 },
           target: { ...target },
           facing: 1,
@@ -520,66 +527,81 @@ function OfficeCanvas({ agents }: { agents: LiveAgent[] }) {
           if (a.status === "busy") burstParticles(particlesRef, a.key, s.pos.x, s.pos.y - 14, rosterLook[a.key].accent);
         }
 
-        // shadow
-        ctx.save();
-        ctx.globalAlpha = 0.25;
-        ctx.fillStyle = "#000";
-        ctx.beginPath();
-        ctx.ellipse(s.pos.x, s.pos.y + 6, 9, 4, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-
-        // selected ring
-        if (selected === a.key) {
+        if (a.status !== "offline") {
+          // shadow
           ctx.save();
-          ctx.globalAlpha = 0.8;
-          ctx.strokeStyle = rosterLook[a.key].accent;
-          ctx.lineWidth = 1;
+          ctx.globalAlpha = 0.25;
+          ctx.fillStyle = "#000";
           ctx.beginPath();
-          ctx.ellipse(s.pos.x, s.pos.y + 6, 13, 7, 0, 0, Math.PI * 2);
-          ctx.stroke();
+          ctx.ellipse(s.pos.x, s.pos.y + 6, 9, 4, 0, 0, Math.PI * 2);
+          ctx.fill();
           ctx.restore();
-        }
 
-        // draw particles behind sprite
-        updateAndDrawParticles(ctx, particlesRef, a.key, dt);
+          // selected ring
+          if (selected === a.key) {
+            ctx.save();
+            ctx.globalAlpha = 0.8;
+            ctx.strokeStyle = rosterLook[a.key].accent;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.ellipse(s.pos.x, s.pos.y + 6, 13, 7, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+          }
+
+          // draw particles behind sprite
+          updateAndDrawParticles(ctx, particlesRef, a.key, dt);
+        }
 
         // draw sprite
         const atDesk = Math.hypot(s.pos.x - desk.chair.x, s.pos.y - desk.chair.y) < 5;
-        const atCouch = Math.hypot(s.pos.x - layout.sleepCouch.x, s.pos.y - layout.sleepCouch.y) < 14;
 
-        drawAgentSprite(ctx, {
-          x: s.pos.x,
-          y: s.pos.y,
-          look: rosterLook[a.key],
-          status: a.status,
-          name: a.name,
-          phase: s.phase,
-          step: s.step,
-          walking,
-          typing: atDesk && (a.status === "active" || a.status === "busy"),
-          sleeping: a.status === "offline" && atCouch,
-          facing: s.facing,
-          clickedGlow: clamp(1 - (t - s.lastClickMs) / 220, 0, 1),
-        });
-
-        // active/busy: speech bubble with typed text effect
-        if ((a.status === "active" || a.status === "busy") && a.task) {
-          const elapsed = Math.max(0, t - s.speechStartMs);
-          const targetChars = clamp(Math.floor(elapsed / (a.status === "busy" ? 14 : 22)), 0, a.task.length);
-          s.speechChars = Math.max(s.speechChars, targetChars);
-          const shown = a.task.slice(0, s.speechChars);
-          drawSpeechBubble(ctx, {
+        // Draw the agent only when not offline (offline desk stays empty).
+        if (a.status !== "offline") {
+          drawAgentSprite(ctx, {
             x: s.pos.x,
-            y: s.pos.y - 28,
-            text: shown,
-            hot: a.status === "busy",
+            y: s.pos.y,
+            look: rosterLook[a.key],
+            status: a.status,
+            phase: s.phase,
+            step: s.step,
+            walking,
+            typing: atDesk && (a.status === "active" || a.status === "busy"),
+            sleeping: false,
+            facing: s.facing,
+            clickedGlow: clamp(1 - (t - s.lastClickMs) / 220, 0, 1),
           });
         }
 
-        // busy: emit code particles occasionally
-        if (a.status === "busy" && (Math.sin((t + hashStr(a.key) % 1000) / 180) > 0.75)) {
-          spawnCodeParticle(particlesRef, a.key, s.pos.x + 8 * s.facing, s.pos.y - 18, rosterLook[a.key].accent);
+        // Desk label always visible and anchored to the station (not the sprite).
+        drawNameLabel(ctx, desk.desk.x, desk.desk.y + 36, a.name, a.status, rosterLook[a.key].accent);
+
+        // active/busy: speech bubble with typed text effect
+        if ((a.status === "active" || a.status === "busy") && a.task) {
+          const full = a.task.length > 40 ? `${a.task.slice(0, 40)}…` : a.task;
+          const elapsed = Math.max(0, t - s.speechStartMs);
+          const targetChars = clamp(Math.floor(elapsed / (a.status === "busy" ? 18 : 26)), 0, full.length);
+          s.speechChars = Math.max(s.speechChars, targetChars);
+          const shown = full.slice(0, s.speechChars);
+
+          const zone = layout.zones.find((z) => z.key === a.key);
+          drawSpeechBubble(ctx, {
+            x: desk.desk.x,
+            y: desk.desk.y - 18,
+            text: shown,
+            hot: a.status === "busy",
+            bounds: zone ? { minX: zone.minX, maxX: zone.maxX } : undefined,
+          });
+        }
+
+        // busy: very subtle particles (keep it calm)
+        if (a.status === "busy") {
+          const h = hashStr(a.key) % 1000;
+          const prevBucket = Math.floor((t - dt * 1000 + h) / 700);
+          const bucket = Math.floor((t + h) / 700);
+          if (bucket !== prevBucket) {
+            spawnCodeParticle(particlesRef, a.key, s.pos.x + 7 * s.facing, s.pos.y - 18, rosterLook[a.key].accent);
+          }
         }
 
         // typing audio
@@ -1193,7 +1215,6 @@ function drawAgentSprite(ctx: CanvasRenderingContext2D, p: {
   y: number;
   look: AgentLook;
   status: AgentStatus;
-  name: string;
   phase: number;
   step: number;
   walking: boolean;
@@ -1202,7 +1223,7 @@ function drawAgentSprite(ctx: CanvasRenderingContext2D, p: {
   facing: -1 | 1;
   clickedGlow: number;
 }) {
-  const { x, y, look, status, name, phase, step, walking, typing, sleeping, facing, clickedGlow } = p;
+  const { x, y, look, status, phase, step, walking, typing, sleeping, facing, clickedGlow } = p;
 
   const alpha = status === "offline" ? 0.55 : 1;
 
@@ -1222,19 +1243,21 @@ function drawAgentSprite(ctx: CanvasRenderingContext2D, p: {
   ctx.save();
   ctx.globalAlpha = alpha;
 
-  // idle breathe
-  const breathe = !walking && !typing && !sleeping ? Math.round(Math.sin(phase * 2.2) * 1) : 0;
+  // Idle animation should be extremely subtle: no whole-body bobbing.
+  // We keep a tiny "chest pixel" pulse instead of moving the entire sprite.
+  const breathe = 0;
+  const chestPulse = !walking && !typing && !sleeping ? (Math.sin(phase * 0.8) + 1) / 2 : 0;
 
   // walk cycle (4 frames)
   const frame = walking ? (((step * 2) | 0) % 4) : 0;
   const legA = frame === 0 ? 0 : frame === 1 ? 1 : frame === 2 ? 0 : -1;
   const legB = -legA;
 
-  // typing arms
-  const arm = typing ? Math.round(Math.sin(phase * (status === "busy" ? 16 : 10)) * 1) : 0;
+  // typing arms: small, rhythmic hand movement only
+  const arm = typing ? ((((phase * 6) | 0) % 2 === 0) ? 1 : 0) : 0;
 
-  // sleep pose (head on desk/couch)
-  const sleepTilt = sleeping ? 1 : 0;
+  // (sleeping handled elsewhere; offline desks are empty)
+  const sleepTilt = 0;
 
   // helper for flipping
   const px = (dx: number) => sx + dx * facing;
@@ -1282,6 +1305,15 @@ function drawAgentSprite(ctx: CanvasRenderingContext2D, p: {
   ctx.fillStyle = look.shirt;
   ctx.fillRect(px(-5), sy + 8 + breathe + sleepTilt, 10, 7);
 
+  // tiny breathing hint (single pixel highlight), keeps the sprite calm
+  if (chestPulse > 0.78 && !walking && !typing && !sleeping) {
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(px(-1), sy + 11, 1, 1);
+    ctx.restore();
+  }
+
   // lapels for suit
   if (look.suit) {
     ctx.fillStyle = "rgba(255,255,255,0.14)";
@@ -1313,18 +1345,7 @@ function drawAgentSprite(ctx: CanvasRenderingContext2D, p: {
   ctx.fillRect(px(-3), sy + 21 + breathe + Math.max(0, legA), 3, 2);
   ctx.fillRect(px(0), sy + 21 + breathe + Math.max(0, legB), 3, 2);
 
-  // sleeping: little head tilt + desk pillow effect
-  if (sleeping) {
-    ctx.save();
-    ctx.globalAlpha = 0.65;
-    ctx.fillStyle = "#93c5fd";
-    ctx.font = "8px ui-monospace, SFMono-Regular, Menlo, monospace";
-    ctx.fillText("Z", sx + 10, sy + 8 + Math.sin(phase * 2) * 2);
-    ctx.restore();
-  }
-
-  // name label + dot
-  drawNameLabel(ctx, sx, sy + 28, name, status, look.accent);
+  // Nameplate/status are rendered at the desk level for a cleaner, anchored layout.
 
   ctx.restore();
 }
@@ -1362,11 +1383,14 @@ function drawNameLabel(
   ctx.restore();
 }
 
-function drawSpeechBubble(ctx: CanvasRenderingContext2D, p: { x: number; y: number; text: string; hot: boolean }) {
+function drawSpeechBubble(
+  ctx: CanvasRenderingContext2D,
+  p: { x: number; y: number; text: string; hot: boolean; bounds?: { minX: number; maxX: number } }
+) {
   ctx.save();
   ctx.font = "7px ui-monospace, SFMono-Regular, Menlo, monospace";
 
-  const maxW = 168;
+  const maxW = 88;
   const lines = wrapText(ctx, p.text, maxW);
 
   const lineH = 9;
@@ -1377,7 +1401,9 @@ function drawSpeechBubble(ctx: CanvasRenderingContext2D, p: { x: number; y: numb
   );
   const bubbleH = lines.length * lineH + pad * 2;
 
-  const x = clamp(p.x - bubbleW / 2, 6, 384 - bubbleW - 6);
+  const minX = p.bounds ? p.bounds.minX + 4 : 6;
+  const maxX = p.bounds ? p.bounds.maxX - bubbleW - 4 : 384 - bubbleW - 6;
+  const x = clamp(p.x - bubbleW / 2, minX, maxX);
   const y = clamp(p.y - bubbleH, 6, 216 - bubbleH - 6);
 
   // bubble
@@ -1389,10 +1415,11 @@ function drawSpeechBubble(ctx: CanvasRenderingContext2D, p: { x: number; y: numb
 
   // tail
   ctx.fillStyle = p.hot ? "rgba(251,191,36,0.16)" : "rgba(56,189,248,0.14)";
+  const tailX = clamp(p.x, x + 10, x + bubbleW - 10);
   ctx.beginPath();
-  ctx.moveTo(p.x - 4, y + bubbleH);
-  ctx.lineTo(p.x + 5, y + bubbleH);
-  ctx.lineTo(p.x, y + bubbleH + 7);
+  ctx.moveTo(tailX - 4, y + bubbleH);
+  ctx.lineTo(tailX + 5, y + bubbleH);
+  ctx.lineTo(tailX, y + bubbleH + 7);
   ctx.closePath();
   ctx.fill();
 
@@ -1418,9 +1445,9 @@ function drawSpeechBubble(ctx: CanvasRenderingContext2D, p: { x: number; y: numb
 
 function burstParticles(particlesRef: React.MutableRefObject<Record<string, Particle[]>>, key: string, x: number, y: number, color: string) {
   const list = (particlesRef.current[key] ??= []);
-  for (let i = 0; i < 10; i++) {
-    const a = (Math.PI * 2 * i) / 10;
-    const sp = 20 + (i % 3) * 12;
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI * 2 * i) / 6;
+    const sp = 18 + (i % 3) * 10;
     list.push({
       x,
       y,
