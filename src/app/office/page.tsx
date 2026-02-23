@@ -92,7 +92,10 @@ function tileCenterPx(tx: number, ty: number) {
 
 const YURI_DOOR_POS = tileCenterPx(YURI_DOOR_TILE.tx, YURI_DOOR_TILE.ty);
 
-// Desk seat positions (px) — where characters sit/work
+// Collaboration desk inside Yuri's office — where spawned agents work alongside Yuri
+const YURI_OFFICE_COLLAB_SEAT: { x: number; y: number; face: Dir } = { ...tileCenterPx(10, 6), face: "down" };
+
+// Desk seat positions (px) — where characters sit/work (their own desks in main office)
 const SEATS: Record<RosterKey, { x: number; y: number; face: Dir }> = {
   yuri: { ...tileCenterPx(5, 6), face: "down" },
   jarvis: { ...tileCenterPx(4, 18), face: "down" },
@@ -407,10 +410,14 @@ function buildProps(): Prop[] {
   // Yuri office (top-left)
   p.push({ kind: "bookshelf", tx: 1, ty: 1 });
   p.push({ kind: "plant", tx: 12, ty: 1 });
-  // big desk (hack: desk + counter extension)
+  // Yuri's big desk (hack: desk + counter extension)
   p.push({ kind: "desk", tx: 3, ty: 4 });
   p.push({ kind: "counter", tx: 5, ty: 4 });
   p.push({ kind: "chair", tx: 4, ty: 6 });
+
+  // Collaboration desk in Yuri's office (for spawned agents)
+  p.push({ kind: "desk", tx: 9, ty: 4 });
+  p.push({ kind: "chair", tx: 10, ty: 6 });
 
   // Main office (bottom-left) 4 desks
   p.push({ kind: "desk", tx: 2, ty: 12 });
@@ -1105,7 +1112,8 @@ export default function OfficePage() {
         }
 
         const isWorking = a.key === "yuri" ? true : runningSet.has(a.key) || a.status === "active" || a.status === "busy";
-        const workSeat = SEATS[a.key];
+        // Yuri works at his desk, spawned agents work at collab desk in Yuri's office
+        const workSeat = a.key === "yuri" ? SEATS.yuri : (isWorking ? YURI_OFFICE_COLLAB_SEAT : SEATS[a.key]);
 
         // Decide next target + path
         if (isWorking) {
