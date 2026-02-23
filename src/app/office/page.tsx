@@ -472,10 +472,11 @@ function OfficeCanvas({ agents }: { agents: LiveAgent[] }) {
           }
         }
 
+        // Force static position - always stay at chair, no walking
         const s = (animRef.current[a.key] ??= {
-          pos: { ...target },
+          pos: { x: 0, y: 0 },
           vel: { x: 0, y: 0 },
-          target: { ...target },
+          target: { x: 0, y: 0 },
           facing: 1,
           phase: Math.random() * 10,
           step: Math.random() * 10,
@@ -486,33 +487,12 @@ function OfficeCanvas({ agents }: { agents: LiveAgent[] }) {
           lastClickMs: 0,
         });
 
-        // speech typing state when task changes
-        if (s.lastTask !== a.task) {
-          s.lastTask = a.task;
-          s.speechStartMs = t;
-          s.speechChars = 0;
-        }
-
-        s.target = target;
-
-        const dx = s.target.x - s.pos.x;
-        const dy = s.target.y - s.pos.y;
-        const dist = Math.hypot(dx, dy);
-        const walking = dist > 0.8;
-
-        const desired = dist > 0.01 ? { x: dx / dist, y: dy / dist } : { x: 0, y: 0 };
-        const speed = a.status === "busy" ? 54 : 44;
-
-        const accel = 10;
-        s.vel.x = lerp(s.vel.x, desired.x * speed, clamp(accel * dt, 0, 1));
-        s.vel.y = lerp(s.vel.y, desired.y * speed, clamp(accel * dt, 0, 1));
-        s.pos.x += s.vel.x * dt;
-        s.pos.y += s.vel.y * dt;
-
-        if (Math.abs(s.vel.x) > 1) s.facing = s.vel.x < 0 ? -1 : 1;
+        // Always snap to chair position - no lerping, no movement
+        s.pos = { ...target };
+        s.target = { ...target };
 
         s.phase += dt;
-        if (walking) s.step += dt * (a.status === "busy" ? 10 : 8);
+        // No walking - static characters
 
         // shadow (not for hidden offscreen)
         if (a.status !== "offline" || sleep) {
@@ -546,7 +526,7 @@ function OfficeCanvas({ agents }: { agents: LiveAgent[] }) {
             status: a.status,
             phase: s.phase,
             step: s.step,
-            walking,
+            walking: false,
             typing: typing && sitting,
             sitting,
             sleeping: sleep,
