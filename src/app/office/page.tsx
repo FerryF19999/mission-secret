@@ -578,16 +578,20 @@ function OfficeCanvas({ agents }: { agents: LiveAgent[] }) {
 
         // active/busy: speech bubble with typed text effect
         if ((a.status === "active" || a.status === "busy") && a.task) {
-          const full = a.task.length > 40 ? `${a.task.slice(0, 40)}…` : a.task;
+          const full = a.task.length > 25 ? `${a.task.slice(0, 25)}…` : a.task;
           const elapsed = Math.max(0, t - s.speechStartMs);
           const targetChars = clamp(Math.floor(elapsed / (a.status === "busy" ? 18 : 26)), 0, full.length);
           s.speechChars = Math.max(s.speechChars, targetChars);
           const shown = full.slice(0, s.speechChars);
 
+          // Stagger bubble heights: alternate between two rows to prevent overlap
+          const agentIdx = ROSTER.findIndex((r) => r.key === a.key);
+          const staggerY = agentIdx % 2 === 0 ? -50 : -18;
+
           const zone = layout.zones.find((z) => z.key === a.key);
           drawSpeechBubble(ctx, {
             x: desk.desk.x,
-            y: desk.desk.y - 18,
+            y: desk.desk.y + staggerY,
             text: shown,
             hot: a.status === "busy",
             bounds: zone ? { minX: zone.minX, maxX: zone.maxX } : undefined,
@@ -1390,7 +1394,7 @@ function drawSpeechBubble(
   ctx.save();
   ctx.font = "7px ui-monospace, SFMono-Regular, Menlo, monospace";
 
-  const maxW = 88;
+  const maxW = 68;
   const lines = wrapText(ctx, p.text, maxW);
 
   const lineH = 9;
