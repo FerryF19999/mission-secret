@@ -25,7 +25,7 @@ type AudioEngine = {
   };
 };
 
-type CharacterMode = "spawn" | "walk" | "work" | "idle";
+type CharacterMode = "spawn" | "walk" | "work" | "idle" | "sitting";
 
 type CharacterRuntime = {
   // px in internal canvas space
@@ -46,6 +46,9 @@ type CharacterRuntime = {
   walkAcc: number;
   typingFrame: 0 | 1;
   typingAcc: number;
+
+  // return to desk after task
+  returnToDesk: boolean;
 
   // spawn vfx
   sparkleUntilMs: number;
@@ -969,6 +972,7 @@ export default function OfficePage() {
         walkAcc: 0,
         typingFrame: 0,
         typingAcc: 0,
+        returnToDesk: false,
         sparkleUntilMs: 0,
         lastStepMs: 0,
         lastTypeMs: 0,
@@ -1006,10 +1010,18 @@ export default function OfficePage() {
       }
 
       if (prev && !now) {
-        // completion ding; agent returns to idle behavior
+        // completion ding; agent walks back to desk and sits
         const rt = runtimeRef.current[rr.key];
         if (rt) {
-          rt.mode = "idle";
+          const ws = SEATS[rr.key as keyof typeof SEATS];
+          if (ws) {
+            const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: ws.x, y: ws.y });
+            rt.path = path;
+            rt.mode = "walk";
+            rt.returnToDesk = true;
+          } else {
+            rt.mode = "idle";
+          }
           rt.nextDecisionMs = 0;
         }
         playComplete(audioRef, muted);
@@ -1110,7 +1122,27 @@ export default function OfficePage() {
           }
 
           const nearTarget = Math.hypot(rt.targetX - rt.x, rt.targetY - rt.y) < 2.0;
+          // sitting at desk — stay until next decision time, then maybe wander
+          if (rt.mode === "sitting") {
+            if (rt.nextDecisionMs === 0) rt.nextDecisionMs = now + randBetween(5000, 12000);
+            if (now >= rt.nextDecisionMs) {
+              rt.mode = "idle";
+              rt.nextDecisionMs = 0;
+            }
+          }
+
           if (rt.mode === "idle" && (rt.nextDecisionMs === 0 || now >= rt.nextDecisionMs) && nearTarget) {
+            // 40% chance to go back to desk and sit, 60% wander
+            if (Math.random() < 0.4) {
+              const ws = SEATS[a.key as keyof typeof SEATS];
+              if (ws) {
+                const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: ws.x, y: ws.y });
+                rt.path = path;
+                rt.mode = "walk";
+                rt.returnToDesk = true;
+                rt.nextDecisionMs = now + randBetween(3000, 7000);
+              }
+            } else {
             // pick an idle destination: bias kitchen/lounges and sometimes report to Yuri's door
             const biasBoss = a.key !== "yuri" && Math.random() < 0.18;
             const pick = biasBoss
@@ -1122,6 +1154,7 @@ export default function OfficePage() {
             rt.path = path;
             rt.mode = "walk";
             rt.nextDecisionMs = now + randBetween(2500, 5200);
+            }
           }
 
           if (rt.mode === "walk" || rt.mode === "spawn") {
@@ -1146,7 +1179,14 @@ export default function OfficePage() {
               }
 
               if (dist < 1.2) rt.path.shift();
-              if (!rt.path.length) rt.mode = "idle";
+              if (!rt.path.length) {
+                if (rt.returnToDesk) {
+                  rt.mode = "sitting";
+                  rt.returnToDesk = false;
+                } else {
+                  rt.mode = "idle";
+                }
+              }
             }
           }
 
@@ -1173,17 +1213,23 @@ export default function OfficePage() {
           rt.walkAcc = 0;
         }
 
-        if (rt.mode === "work") {
-          const busy = a.status === "busy";
-          const cadence = busy ? 0.085 : 0.12;
-          rt.typingAcc += dt;
-          if (rt.typingAcc >= cadence) {
-            rt.typingAcc = 0;
-            rt.typingFrame = rt.typingFrame === 0 ? 1 : 0;
-            if (now - rt.lastTypeMs > 60 && Math.random() < 0.9) {
-              playTyping(audioRef, muted, busy ? 0.85 : 0.6);
-              rt.lastTypeMs = now;
+        if (rt.mode === "work" || rt.mode === "sitting") {
+          if (rt.mode === "work") {
+            const busy = a.status === "busy";
+            const cadence = busy ? 0.085 : 0.12;
+            rt.typingAcc += dt;
+            if (rt.typingAcc >= cadence) {
+              rt.typingAcc = 0;
+              rt.typingFrame = rt.typingFrame === 0 ? 1 : 0;
+              if (now - rt.lastTypeMs > 60 && Math.random() < 0.9) {
+                playTyping(audioRef, muted, busy ? 0.85 : 0.6);
+                rt.lastTypeMs = now;
+              }
             }
+          } else {
+            // sitting — no typing, just seated still
+            rt.typingFrame = 0;
+            rt.typingAcc = 0;
           }
         } else {
           rt.typingAcc = 0;
