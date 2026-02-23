@@ -1128,11 +1128,27 @@ export default function OfficePage() {
 
         // Decide next target + path
         if (isWorking) {
-          rt.mode = "work";
-          rt.targetX = workSeat.x;
-          rt.targetY = workSeat.y;
-          rt.path = [];
-          rt.dir = workSeat.face;
+          const distToSeat = Math.hypot(workSeat.x - rt.x, workSeat.y - rt.y);
+          if (distToSeat < 3) {
+            // Already at desk — sit and work
+            rt.mode = "work";
+            rt.x = workSeat.x;
+            rt.y = workSeat.y;
+            rt.targetX = workSeat.x;
+            rt.targetY = workSeat.y;
+            rt.path = [];
+            rt.dir = workSeat.face;
+          } else {
+            // Walk to desk first
+            if (rt.mode !== "walk" || rt.targetX !== workSeat.x || rt.targetY !== workSeat.y) {
+              const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: workSeat.x, y: workSeat.y });
+              rt.path = path;
+              rt.mode = "walk";
+              rt.targetX = workSeat.x;
+              rt.targetY = workSeat.y;
+              rt.returnToDesk = false;
+            }
+          }
         } else {
           // idle behaviors
           if (rt.mode === "spawn") {
