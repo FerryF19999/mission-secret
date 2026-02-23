@@ -91,6 +91,9 @@ http.route({
               filename: body.filename,
               contentType: body.mimeType || body.contentType,
               size: fileSize,
+              agentId: body.agentId,
+              agentName: body.agentName,
+              task: body.task,
             });
           }
           break;

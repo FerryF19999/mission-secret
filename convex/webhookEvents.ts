@@ -330,13 +330,33 @@ export const handleAgentRunFileCommit = internalMutation({
     filename: v.optional(v.string()),
     contentType: v.optional(v.string()),
     size: v.optional(v.number()),
+    agentId: v.optional(v.string()),
+    agentName: v.optional(v.string()),
+    task: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const run = await ctx.db
+    let run = await ctx.db
       .query("agentRuns")
       .withIndex("by_runId", (q) => q.eq("runId", args.runId))
       .first();
-    if (!run) return;
+
+    // Auto-create run if it doesn't exist
+    if (!run) {
+      const now = Date.now();
+      const id = await ctx.db.insert("agentRuns", {
+        runId: args.runId,
+        agentId: args.agentId || "unknown",
+        agentName: args.agentName || args.agentId || "unknown",
+        task: args.task || "File upload",
+        status: "running",
+        startedAt: now,
+        completedAt: undefined,
+        result: undefined,
+        resultFiles: [],
+      });
+      run = await ctx.db.get(id);
+      if (!run) return;
+    }
 
     const files = (run.resultFiles as any[]) || [];
     files.push({
