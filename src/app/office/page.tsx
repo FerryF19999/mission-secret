@@ -1152,14 +1152,16 @@ export default function OfficePage() {
             rt.path = [];
             rt.dir = workSeat.face;
           } else {
-            // Walk to desk first
-            if (rt.mode !== "walk" || rt.targetX !== workSeat.x || rt.targetY !== workSeat.y) {
-              const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: workSeat.x, y: workSeat.y });
-              rt.path = path;
-              rt.mode = "walk";
-              rt.targetX = workSeat.x;
-              rt.targetY = workSeat.y;
-              rt.returnToDesk = false;
+            // Teleport to work seat with sparkle
+            rt.x = workSeat.x;
+            rt.y = workSeat.y;
+            rt.targetX = workSeat.x;
+            rt.targetY = workSeat.y;
+            rt.path = [];
+            rt.mode = "work";
+            rt.dir = workSeat.face;
+            if (rt.sparkleUntilMs < now) {
+              rt.sparkleUntilMs = now + 400;
             }
           }
         } else {
