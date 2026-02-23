@@ -118,6 +118,7 @@ export default defineSchema({
           filename: v.string(),
           contentType: v.optional(v.string()),
           size: v.optional(v.number()),
+          url: v.optional(v.string()),
           createdAt: v.number(),
         })
       )

@@ -65,15 +65,36 @@ http.route({
           });
           break;
 
-        case "agent_run_file_commit":
-          await ctx.runMutation((internal as any).webhookEvents.handleAgentRunFileCommit, {
-            runId: body.runId,
-            storageId: body.storageId,
-            filename: body.filename,
-            contentType: body.contentType,
-            size: body.size,
-          });
+        case "agent_run_file_commit": {
+          // If base64 content is provided, upload to Convex storage first
+          let storageId = body.storageId;
+          let fileSize = body.size;
+
+          if (body.content) {
+            // Decode base64 content
+            const raw = atob(body.content);
+            const bytes = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+
+            // Determine MIME type
+            const mime = body.mimeType || body.contentType || "application/octet-stream";
+
+            // Store in Convex storage
+            storageId = await ctx.storage.store(new Blob([bytes], { type: mime }));
+            fileSize = bytes.length;
+          }
+
+          if (storageId) {
+            await ctx.runMutation((internal as any).webhookEvents.handleAgentRunFileCommit, {
+              runId: body.runId,
+              storageId,
+              filename: body.filename,
+              contentType: body.mimeType || body.contentType,
+              size: fileSize,
+            });
+          }
           break;
+        }
 
         case "task_created":
           await ctx.runMutation((internal as any).webhookEvents.handleTaskCreated, {

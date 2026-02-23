@@ -9,13 +9,16 @@
  */
 
 import type * as activityLog from "../activityLog.js";
+import type * as agentRuns from "../agentRuns.js";
 import type * as agents from "../agents.js";
 import type * as contentItems from "../contentItems.js";
 import type * as events from "../events.js";
+import type * as files from "../files.js";
 import type * as http from "../http.js";
 import type * as memories from "../memories.js";
 import type * as scheduledEvents from "../scheduledEvents.js";
 import type * as tasks from "../tasks.js";
+import type * as webhookEvents from "../webhookEvents.js";
 
 import type {
   ApiFromModules,
@@ -25,13 +28,16 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   activityLog: typeof activityLog;
+  agentRuns: typeof agentRuns;
   agents: typeof agents;
   contentItems: typeof contentItems;
   events: typeof events;
+  files: typeof files;
   http: typeof http;
   memories: typeof memories;
   scheduledEvents: typeof scheduledEvents;
   tasks: typeof tasks;
+  webhookEvents: typeof webhookEvents;
 }>;
 
 /**

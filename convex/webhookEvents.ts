@@ -326,30 +326,26 @@ export const handleAgentStatusUpdate = internalMutation({
 export const handleAgentRunFileCommit = internalMutation({
   args: {
     runId: v.string(),
-    storageId: v.optional(v.string()),
+    storageId: v.string(),
     filename: v.optional(v.string()),
-    contentType: v.optional(v.union(v.literal("image"), v.literal("video"), v.literal("audio"), v.literal("text"), v.literal("text/markdown"), v.literal("text/plain"), v.literal("pdf"), v.literal("other"))),
+    contentType: v.optional(v.string()),
     size: v.optional(v.number()),
-    url: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db
       .query("agentRuns")
       .withIndex("by_runId", (q) => q.eq("runId", args.runId))
       .first();
-    if (run) {
-      const files = (run.resultFiles as any[]) || [];
-      // Generate URL if not provided - for local files we can reference them
-      const fileUrl = args.url || args.storageId || `file://${args.filename || `file-${Date.now()}`}`;
-      files.push({
-        storageId: args.storageId || `storage-${Date.now()}`,
-        filename: args.filename || `file-${Date.now()}`,
-        contentType: args.contentType as string || "text/markdown",
-        size: args.size || 0,
-        url: fileUrl,
-        createdAt: Date.now(),
-      });
-      await ctx.db.patch(run._id, { resultFiles: files });
-    }
+    if (!run) return;
+
+    const files = (run.resultFiles as any[]) || [];
+    files.push({
+      storageId: args.storageId,
+      filename: args.filename || `file-${Date.now()}`,
+      contentType: args.contentType || "application/octet-stream",
+      size: args.size || 0,
+      createdAt: Date.now(),
+    });
+    await ctx.db.patch(run._id, { resultFiles: files });
   },
 });
