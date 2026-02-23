@@ -16,6 +16,15 @@ type SpriteSheets = {
   characters?: HTMLImageElement;
 };
 
+type AudioEngine = {
+  ctx: AudioContext;
+  master: GainNode;
+  ambient: {
+    gain: GainNode;
+    stop: () => void;
+  };
+};
+
 type CharacterRuntime = {
   x: number; // px in internal canvas space
   y: number;
@@ -28,6 +37,10 @@ type CharacterRuntime = {
   walkFrame: 0 | 1 | 2 | 3;
   walkAcc: number;
   typingAcc: number;
+  // audio cadence helpers
+  lastWalkFrame: number;
+  lastStepMs: number;
+  lastTypingParity: number;
 };
 
 const TILE = 16;
@@ -98,6 +111,203 @@ function loadImage(src: string) {
     img.src = src;
     img.onload = () => resolve(img);
     img.onerror = (e) => reject(e);
+  });
+}
+
+function randBetween(a: number, b: number) {
+  return a + Math.random() * (b - a);
+}
+
+function ensureAudioEngine(engineRef: React.MutableRefObject<AudioEngine | null>) {
+  if (engineRef.current) return engineRef.current;
+  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const master = ctx.createGain();
+  master.gain.value = 0.22; // overall low volume
+  master.connect(ctx.destination);
+
+  // Ambient: very faint hum + filtered noise
+  const ambientGain = ctx.createGain();
+  ambientGain.gain.value = 0.0;
+  ambientGain.connect(master);
+
+  // low sine hum
+  const hum = ctx.createOscillator();
+  hum.type = "sine";
+  hum.frequency.value = 58;
+  const humGain = ctx.createGain();
+  humGain.gain.value = 0.025;
+  hum.connect(humGain);
+  humGain.connect(ambientGain);
+
+  // air/noise
+  const noiseLen = Math.max(1, Math.floor(ctx.sampleRate * 1.5));
+  const noiseBuf = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
+  const data = noiseBuf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.35;
+  const noise = ctx.createBufferSource();
+  noise.buffer = noiseBuf;
+  noise.loop = true;
+  const noiseFilter = ctx.createBiquadFilter();
+  noiseFilter.type = "bandpass";
+  noiseFilter.frequency.value = 420;
+  noiseFilter.Q.value = 0.7;
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.value = 0.02;
+  noise.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseGain.connect(ambientGain);
+
+  hum.start();
+  noise.start();
+
+  engineRef.current = {
+    ctx,
+    master,
+    ambient: {
+      gain: ambientGain,
+      stop: () => {
+        try {
+          hum.stop();
+          noise.stop();
+        } catch {
+          // ignore
+        }
+      },
+    },
+  };
+  return engineRef.current;
+}
+
+function withAudio(
+  engineRef: React.MutableRefObject<AudioEngine | null>,
+  muted: boolean,
+  fn: (ctx: AudioContext, master: GainNode) => void
+) {
+  if (muted) return;
+  const eng = ensureAudioEngine(engineRef);
+  if (eng.ctx.state === "suspended") {
+    // resume is required by browser autoplay policies; should be called from a user gesture
+    eng.ctx.resume().catch(() => {});
+  }
+  fn(eng.ctx, eng.master);
+}
+
+function playTyping(engineRef: React.MutableRefObject<AudioEngine | null>, muted: boolean, intensity01 = 0.6) {
+  withAudio(engineRef, muted, (ctx, master) => {
+    const t0 = ctx.currentTime;
+
+    // soft click = short noise burst + gentle highpass, super low gain
+    const dur = randBetween(0.008, 0.016);
+
+    const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+      // exponential-ish decay
+      const env = Math.exp(-i / (len * 0.22));
+      d[i] = (Math.random() * 2 - 1) * env;
+    }
+
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.setValueAtTime(900 + randBetween(-120, 180), t0);
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.012 * intensity01, t0 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
+    src.connect(hp);
+    hp.connect(g);
+    g.connect(master);
+    src.start(t0);
+    src.stop(t0 + dur);
+  });
+}
+
+function playFootstep(engineRef: React.MutableRefObject<AudioEngine | null>, muted: boolean) {
+  withAudio(engineRef, muted, (ctx, master) => {
+    const t0 = ctx.currentTime;
+    const dur = randBetween(0.025, 0.04);
+
+    const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+      const env = Math.exp(-i / (len * 0.28));
+      d[i] = (Math.random() * 2 - 1) * env;
+    }
+
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.setValueAtTime(220 + randBetween(-35, 35), t0);
+    bp.Q.value = 1.6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.008, t0 + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(master);
+    src.start(t0);
+    src.stop(t0 + dur);
+  });
+}
+
+function playSpawn(engineRef: React.MutableRefObject<AudioEngine | null>, muted: boolean) {
+  withAudio(engineRef, muted, (ctx, master) => {
+    const t0 = ctx.currentTime;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.03, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+    g.connect(master);
+
+    const o = ctx.createOscillator();
+    o.type = "triangle";
+    const f0 = randBetween(620, 740);
+    o.frequency.setValueAtTime(f0, t0);
+    o.frequency.exponentialRampToValueAtTime(f0 * 1.5, t0 + 0.12);
+    o.connect(g);
+    o.start(t0);
+    o.stop(t0 + 0.22);
+
+    const o2 = ctx.createOscillator();
+    o2.type = "sine";
+    o2.frequency.setValueAtTime(f0 * 2.0, t0 + 0.02);
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(0.0001, t0);
+    g2.gain.exponentialRampToValueAtTime(0.012, t0 + 0.03);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+    o2.connect(g2);
+    g2.connect(master);
+    o2.start(t0 + 0.02);
+    o2.stop(t0 + 0.18);
+  });
+}
+
+function playComplete(engineRef: React.MutableRefObject<AudioEngine | null>, muted: boolean) {
+  withAudio(engineRef, muted, (ctx, master) => {
+    const t0 = ctx.currentTime;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.035, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
+    g.connect(master);
+
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(880, t0);
+    o.frequency.setValueAtTime(1174.66, t0 + 0.12); // D6-ish
+    o.connect(g);
+    o.start(t0);
+    o.stop(t0 + 0.28);
   });
 }
 
@@ -348,6 +558,10 @@ export default function OfficePage() {
   const [selected, setSelected] = useState<RosterKey>("friday");
   const selectedLive = live.find((a) => a.key === selected);
 
+  const [muted, setMuted] = useState(true);
+  const audioRef = useRef<AudioEngine | null>(null);
+  const prevRunningByAgentRef = useRef<Record<string, boolean>>({});
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sheetsRef = useRef<SpriteSheets>({});
@@ -378,6 +592,44 @@ export default function OfficePage() {
     };
   }, []);
 
+  // Audio: default muted; create AudioContext only after unmute.
+  useEffect(() => {
+    if (muted) {
+      const eng = audioRef.current;
+      if (eng) eng.ambient.gain.gain.setTargetAtTime(0.0, eng.ctx.currentTime, 0.05);
+      return;
+    }
+
+    const eng = ensureAudioEngine(audioRef);
+    if (eng.ctx.state === "suspended") eng.ctx.resume().catch(() => {});
+    eng.ambient.gain.gain.setTargetAtTime(0.12, eng.ctx.currentTime, 0.08);
+
+    return () => {
+      // keep context alive across toggles; no teardown
+    };
+  }, [muted]);
+
+  // Spawn/complete sounds by observing running agent runs.
+  useEffect(() => {
+    const runSet = new Set<string>();
+    for (const r of running ?? []) {
+      const id = String((r as any).agentId ?? "").toLowerCase();
+      const nm = String((r as any).agentName ?? "").toLowerCase();
+      for (const rr of ROSTER) {
+        if (id === rr.key || nm === rr.label.toLowerCase()) runSet.add(rr.key);
+      }
+    }
+
+    for (const rr of ROSTER) {
+      if (rr.key === "yuri") continue; // don't spawn Yuri (he's always here)
+      const prev = !!prevRunningByAgentRef.current[rr.key];
+      const now = runSet.has(rr.key);
+      if (!prev && now) playSpawn(audioRef, muted);
+      if (prev && !now) playComplete(audioRef, muted);
+      prevRunningByAgentRef.current[rr.key] = now;
+    }
+  }, [running, muted]);
+
   // init character runtimes at their desk
   useEffect(() => {
     for (const r of ROSTER) {
@@ -393,6 +645,9 @@ export default function OfficePage() {
         walkFrame: 0,
         walkAcc: 0,
         typingAcc: 0,
+        lastWalkFrame: 0,
+        lastStepMs: 0,
+        lastTypingParity: 0,
       };
     }
   }, []);
@@ -499,7 +754,10 @@ export default function OfficePage() {
         rt.x = clamp(rt.x, 8, INTERNAL_W - 8);
         rt.y = clamp(rt.y, 24, INTERNAL_H - 4);
 
-        // animation
+        // animation (+ sound cadence)
+        const prevWalkFrame = rt.walkFrame;
+        const prevTypingAcc = rt.typingAcc;
+
         if (moving) {
           rt.walkAcc += dt;
           if (rt.walkAcc >= 0.18) {
@@ -510,11 +768,29 @@ export default function OfficePage() {
           rt.walkFrame = 0;
           rt.walkAcc = 0;
         }
+
         if (isWorking) {
           rt.typingAcc += dt;
           if (rt.typingAcc >= 0.22) rt.typingAcc = 0;
         } else {
           rt.typingAcc = 0;
+        }
+
+        // footsteps: on walk frame change (soft)
+        if (moving && rt.walkFrame !== prevWalkFrame) {
+          const since = now - (rt.lastStepMs || 0);
+          if (since > 115 && rt.walkFrame % 2 === 0) {
+            playFootstep(audioRef, muted);
+            rt.lastStepMs = now;
+          }
+        }
+        rt.lastWalkFrame = rt.walkFrame;
+
+        // typing clicks: trigger when the internal typing cycle wraps
+        if (isWorking && prevTypingAcc > 0 && rt.typingAcc === 0) {
+          // busy types a touch faster/louder than active, but still subtle
+          const intensity = a.status === "busy" ? 0.85 : 0.6;
+          if (Math.random() < 0.85) playTyping(audioRef, muted, intensity);
         }
       }
 
@@ -535,7 +811,7 @@ export default function OfficePage() {
 
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [live, props, selected, tilemap]);
+  }, [live, props, selected, tilemap, muted]);
 
   // click hit-testing
   useEffect(() => {
@@ -577,7 +853,29 @@ export default function OfficePage() {
             <div className="text-xs text-slate-300">Canvas-rendered pixel art · real sprite sheets</div>
           </div>
 
-          <div ref={containerRef} className="flex h-[520px] w-full items-center justify-center overflow-hidden rounded-lg bg-black/40">
+          <div
+            ref={containerRef}
+            className="relative flex h-[520px] w-full items-center justify-center overflow-hidden rounded-lg bg-black/40"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                // must be a user gesture for AudioContext resume
+                setMuted((m) => {
+                  const next = !m;
+                  if (!next) {
+                    const eng = ensureAudioEngine(audioRef);
+                    if (eng.ctx.state === "suspended") eng.ctx.resume().catch(() => {});
+                  }
+                  return next;
+                });
+              }}
+              className="absolute right-2 top-2 z-10 rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1 text-xs text-slate-100 hover:bg-slate-950/80"
+              title={muted ? "Unmute" : "Mute"}
+            >
+              {muted ? "🔇" : "🔊"}
+            </button>
+
             <canvas
               ref={canvasRef}
               width={INTERNAL_W}
