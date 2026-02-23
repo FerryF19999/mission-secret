@@ -458,11 +458,8 @@ function OfficeCanvas({ agents }: { agents: LiveAgent[] }) {
           typing = true;
           sitting = true;
         } else if (a.status === "idle") {
-          // idle -> wander to kitchen or stand in main
-          const seed = hashStr(a.key) % 3;
-          target = seed === 0 ? st.kitchen : seed === 1 ? st.idle : st.lounge;
-          // keep Friday mostly walking in main like reference
-          if (a.key === "friday") target = st.idle;
+          // idle -> stay at desk, no wandering
+          target = st.chair;
         } else {
           // offline -> not visible; Glass/Epstein can "sleep" on couch (reference vibes)
           if (a.key === "glass" || a.key === "epstein") {
@@ -562,18 +559,11 @@ function OfficeCanvas({ agents }: { agents: LiveAgent[] }) {
 
           // speech bubble for active/busy tasks
           if ((a.status === "active" || a.status === "busy") && a.task) {
-            const full = a.task.length > 38 ? `${a.task.slice(0, 38)}…` : a.task;
-            const elapsed = Math.max(0, t - s.speechStartMs);
-            const cps = a.status === "busy" ? 24 : 18;
-            const targetChars = clamp(Math.floor(elapsed / (1000 / cps)), 0, full.length);
-            s.speechChars = Math.max(s.speechChars, targetChars);
-            const shown = full.slice(0, s.speechChars);
-
-            // bubble above desk area (staggered)
-            const stagger = a.key === "yuri" || a.key === "jarvis" ? -62 : -46;
+            // Simple clean bubble - no typing animation, just show text
+            const shown = a.task.length > 30 ? `${a.task.slice(0, 30)}…` : a.task;
             drawSpeechBubble(ctx, {
               x: st.desk.x,
-              y: st.desk.y + stagger,
+              y: st.desk.y - 56,
               text: shown,
               hot: a.status === "busy",
               bounds: layout.zones[a.key],
