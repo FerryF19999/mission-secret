@@ -1125,8 +1125,18 @@ export default function OfficePage() {
         } else {
           // idle behaviors
           if (rt.mode === "spawn") {
-            // after sparkle, start walking to desk (but not working)
-            if (now > rt.sparkleUntilMs) rt.mode = "walk";
+            // after sparkle, path to own desk
+            if (now > rt.sparkleUntilMs) {
+              const ws = SEATS[a.key as keyof typeof SEATS];
+              if (ws) {
+                const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: ws.x, y: ws.y });
+                rt.path = path;
+                rt.mode = "walk";
+                rt.returnToDesk = true;
+              } else {
+                rt.mode = "idle";
+              }
+            }
           }
 
           const nearTarget = Math.hypot(rt.targetX - rt.x, rt.targetY - rt.y) < 2.0;
@@ -1140,8 +1150,8 @@ export default function OfficePage() {
           }
 
           if (rt.mode === "idle" && (rt.nextDecisionMs === 0 || now >= rt.nextDecisionMs) && nearTarget) {
-            // 40% chance to go back to desk and sit, 60% wander
-            if (Math.random() < 0.4) {
+            // 70% chance to go back to desk and sit, 30% wander
+            if (Math.random() < 0.7) {
               const ws = SEATS[a.key as keyof typeof SEATS];
               if (ws) {
                 const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: ws.x, y: ws.y });
