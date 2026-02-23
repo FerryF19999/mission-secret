@@ -10,6 +10,7 @@ import {
   FileText,
   Calendar,
   Activity,
+  Building2,
   Settings,
   Zap,
 } from "lucide-react";
@@ -18,6 +19,7 @@ const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/tasks", icon: CheckSquare, label: "Tasks" },
   { href: "/team", icon: Bot, label: "Team" },
+  { href: "/office", icon: Building2, label: "Office" },
   { href: "/memory", icon: Brain, label: "Memory" },
   { href: "/content", icon: FileText, label: "Content" },
   { href: "/runs", icon: Activity, label: "Runs" },
