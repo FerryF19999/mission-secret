@@ -557,18 +557,7 @@ function OfficeCanvas({ agents }: { agents: LiveAgent[] }) {
           // label anchored above head (reference has no UI labels, keep tiny)
           drawTinyName(ctx, s.pos.x, s.pos.y - 22, a.name, a.status);
 
-          // speech bubble for active/busy tasks
-          if ((a.status === "active" || a.status === "busy") && a.task) {
-            // Simple clean bubble - no typing animation, just show text
-            const shown = a.task.length > 30 ? `${a.task.slice(0, 30)}…` : a.task;
-            drawSpeechBubble(ctx, {
-              x: st.desk.x,
-              y: st.desk.y - 56,
-              text: shown,
-              hot: a.status === "busy",
-              bounds: layout.zones[a.key],
-            });
-          }
+          // speech bubble disabled - task info only shown on click (via selected agent panel)
         }
       }
 
