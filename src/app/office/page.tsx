@@ -106,14 +106,14 @@ const SEATS: Record<RosterKey, { x: number; y: number; face: Dir }> = {
 
 // Casual idle destinations (tile centers)
 const IDLE_DEST_TILES: Array<{ tx: number; ty: number; kind: "wander" | "kitchen" | "lounge" | "boss" | "peer" }> = [
-  { tx: 2, ty: 12, kind: "peer" },
-  { tx: 7, ty: 12, kind: "peer" },
+  { tx: 3, ty: 13, kind: "peer" },
+  { tx: 8, ty: 15, kind: "peer" },
   { tx: 12, ty: 16, kind: "wander" },
   { tx: 19, ty: 3, kind: "kitchen" }, // vending
   { tx: 26, ty: 3, kind: "kitchen" }, // water/fridge
   { tx: 22, ty: 16, kind: "lounge" }, // couch area
   { tx: 27, ty: 15, kind: "lounge" },
-  { tx: YURI_DOOR_TILE.tx, ty: YURI_DOOR_TILE.ty + 1, kind: "boss" },
+  { tx: YURI_DOOR_TILE.tx - 3, ty: YURI_DOOR_TILE.ty + 2, kind: "boss" },
 ];
 
 // --- helpers ---
@@ -1154,7 +1154,7 @@ export default function OfficePage() {
             // pick an idle destination: bias kitchen/lounges and sometimes report to Yuri's door
             const biasBoss = a.key !== "yuri" && Math.random() < 0.18;
             const pick = biasBoss
-              ? { tx: YURI_DOOR_TILE.tx, ty: YURI_DOOR_TILE.ty + 1 }
+              ? { tx: YURI_DOOR_TILE.tx - 2, ty: YURI_DOOR_TILE.ty + 2 }
               : IDLE_DEST_TILES[Math.floor(Math.random() * IDLE_DEST_TILES.length)];
 
             const destPx = tileCenterPx(pick.tx, pick.ty);
