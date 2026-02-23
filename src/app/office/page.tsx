@@ -527,6 +527,19 @@ function buildBlocked(props: Prop[]) {
   blocked[MAIN_TO_RIGHT_DOOR_TILE.ty][MAIN_TO_RIGHT_DOOR_TILE.tx] = false;
   blocked[KITCHEN_TO_LOUNGE_DOOR_TILE.ty][KITCHEN_TO_LOUNGE_DOOR_TILE.tx] = false;
 
+  // allow all seat tiles (chairs block them but agents need to sit there)
+  for (const s of Object.values(SEATS)) {
+    const tx = clamp(Math.floor(s.x / TILE), 0, COLS - 1);
+    const ty = clamp(Math.floor((s.y - 4) / TILE), 0, ROWS - 1);
+    blocked[ty][tx] = false;
+  }
+  // collab seat
+  {
+    const tx = clamp(Math.floor(YURI_OFFICE_COLLAB_SEAT.x / TILE), 0, COLS - 1);
+    const ty = clamp(Math.floor((YURI_OFFICE_COLLAB_SEAT.y - 4) / TILE), 0, ROWS - 1);
+    blocked[ty][tx] = false;
+  }
+
   return blocked;
 }
 
