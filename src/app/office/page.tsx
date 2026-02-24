@@ -35,7 +35,7 @@ type CharacterRuntime = {
   // anim clocks
   walkFrame: 0 | 1 | 2 | 3;
   walkAcc: number;
-  typingFrame: 5 | 6;
+  typingFrame: 0 | 1;
   typingAcc: number;
 
   // sparkle on new run
@@ -967,11 +967,14 @@ function drawCharacter(
   const FRAME_W = 16;
   const FRAME_H = 24;
 
-  let col = 4; // idle
+  // Sprite sheet columns per direction row:
+  // 0-2: walk (3 frames), 3-4: typing (2 frames), 5-6: reading (2 frames)
+  // Idle = walk frame 1 (mid-stance)
+  let col = 1; // idle = walk frame 1
   if (rt.anim === "work" && (status === "active" || status === "busy")) {
-    col = rt.typingFrame; // 5/6
+    col = 3 + (rt.typingFrame % 2); // typing: cols 3-4
   } else if (rt.anim === "walk") {
-    col = rt.walkFrame;
+    col = rt.walkFrame % 3; // walk: cols 0-2
   }
 
   const row = dirRowIndex(rt.dir);
@@ -1099,7 +1102,7 @@ export default function OfficePage() {
         goingToSeat: false,
         walkFrame: 0,
         walkAcc: 0,
-        typingFrame: 5,
+        typingFrame: 0,
         typingAcc: 0,
         sparkleUntilMs: 0,
       };
@@ -1372,7 +1375,7 @@ export default function OfficePage() {
           rt.walkAcc += dt;
           if (rt.walkAcc >= 0.14) {
             rt.walkAcc = 0;
-            rt.walkFrame = (((rt.walkFrame + 1) % 4) as 0 | 1 | 2 | 3);
+            rt.walkFrame = (((rt.walkFrame + 1) % 3) as 0 | 1 | 2 | 3);
           }
         } else {
           rt.walkFrame = 0;
@@ -1384,11 +1387,11 @@ export default function OfficePage() {
           rt.typingAcc += dt;
           if (rt.typingAcc >= cadence) {
             rt.typingAcc = 0;
-            rt.typingFrame = rt.typingFrame === 5 ? 6 : 5;
+            rt.typingFrame = rt.typingFrame === 0 ? 1 : 0;
           }
         } else {
           rt.typingAcc = 0;
-          rt.typingFrame = 5;
+          rt.typingFrame = 0;
         }
       }
 
