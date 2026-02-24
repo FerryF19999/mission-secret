@@ -110,12 +110,13 @@ function dirFromDelta(dx: number, dy: number): Dir {
   return dy < 0 ? "up" : "down";
 }
 
+// PNG rows: down(0), up(1), right(2). Left = flip right horizontally.
 function dirRowIndex(d: Dir) {
-  // rows: down(0), left(1), right(2), up(3)
   if (d === "down") return 0;
-  if (d === "left") return 1;
+  if (d === "up") return 1;
   if (d === "right") return 2;
-  return 3;
+  if (d === "left") return 2; // same row as right, but we flip horizontally when drawing
+  return 0;
 }
 
 function statusColor(status: AgentStatus) {
@@ -965,45 +966,54 @@ function drawCharacter(
   selected: boolean
 ) {
   const FRAME_W = 16;
-  const FRAME_H = 24;
+  const FRAME_H = 32; // 24px sprite + 8px top padding in PNG
 
-  // Sprite sheet columns per direction row:
-  // 0-2: walk (3 frames), 3-4: typing (2 frames), 5-6: reading (2 frames)
-  // Idle = walk frame 1 (mid-stance)
-  let col = 1; // idle = walk frame 1
+  // Sprite sheet columns: 0-2 walk, 3-4 typing, 5-6 reading. Idle = col 1.
+  let col = 1;
   if (rt.anim === "work" && (status === "active" || status === "busy")) {
-    col = 3 + (rt.typingFrame % 2); // typing: cols 3-4
+    col = 3 + (rt.typingFrame % 2);
   } else if (rt.anim === "walk") {
-    col = rt.walkFrame % 3; // walk: cols 0-2
+    col = rt.walkFrame % 3;
   }
 
   const row = dirRowIndex(rt.dir);
   const sx = col * FRAME_W;
   const sy = row * FRAME_H;
+  const isLeft = rt.dir === "left";
 
-  // Apply sitting offset when working at desk
   const isSitting = rt.anim === "work" && (status === "active" || status === "busy");
   const sittingOff = isSitting ? SITTING_OFFSET_Y : 0;
 
+  // Character sprite is bottom-aligned in 16x32 frame (8px padding on top)
+  // Feet at rt.y, so draw from rt.y - 32 (but 8px is padding, so visible at rt.y - 24)
   const dx = Math.round(rt.x - FRAME_W / 2);
   const dy = Math.round(rt.y - FRAME_H + sittingOff);
 
   // shadow
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
   ctx.beginPath();
-  ctx.ellipse(rt.x, rt.y - 4 + sittingOff, 7, 4, 0, 0, Math.PI * 2);
+  ctx.ellipse(rt.x, rt.y - 2 + sittingOff, 6, 3, 0, 0, Math.PI * 2);
   ctx.fill();
 
   if (selected) {
     ctx.fillStyle = "rgba(56,189,248,0.18)";
     ctx.beginPath();
-    ctx.ellipse(rt.x, rt.y - 4 + sittingOff, 11, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(rt.x, rt.y - 2 + sittingOff, 10, 5, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  ctx.drawImage(img, sx, sy, FRAME_W, FRAME_H, dx, dy, FRAME_W, FRAME_H);
+  // Draw sprite — flip horizontally for left direction
+  if (isLeft) {
+    ctx.save();
+    ctx.translate(dx + FRAME_W, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(img, sx, sy, FRAME_W, FRAME_H, 0, dy, FRAME_W, FRAME_H);
+    ctx.restore();
+  } else {
+    ctx.drawImage(img, sx, sy, FRAME_W, FRAME_H, dx, dy, FRAME_W, FRAME_H);
+  }
 
-  drawLabel(ctx, rt.x, dy - 2, label, selected ? "#38bdf8" : "rgba(255,255,255,0.9)", statusColor(status));
+  drawLabel(ctx, rt.x, dy + 6, label, selected ? "#38bdf8" : "rgba(255,255,255,0.9)", statusColor(status));
 }
 
 function loadImage(src: string) {
