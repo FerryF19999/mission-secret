@@ -500,6 +500,43 @@ function counterSprite(): Sprite {
   return spriteFromPixels(px, 1);
 }
 
+function tvSprite(): Sprite {
+  // 32x16 — flat screen TV on wall
+  const _ = "";
+  const FR = "#1a1a2a"; // bezel
+  const SC = "#0a1628"; // screen dark
+  const GL = "#1a3050"; // screen glow
+  const px: string[][] = [];
+  for (let y = 0; y < 16; y++) {
+    const row: string[] = [];
+    for (let x = 0; x < 32; x++) {
+      if (y <= 1 || y >= 14 || x <= 1 || x >= 30) { row.push(FR); continue; }
+      row.push((x + y) % 7 < 2 ? GL : SC);
+    }
+    px.push(row);
+  }
+  return spriteFromPixels(px, 1);
+}
+
+function playstationSprite(): Sprite {
+  // 16x16 — game console
+  const _ = "";
+  const BODY = "#1a1a2e";
+  const DETAIL = "#2a2a4e";
+  const LED = "#22c55e";
+  const px: string[][] = Array.from({ length: 16 }, () => Array.from({ length: 16 }, () => _));
+  // console body
+  for (let y = 6; y <= 12; y++) for (let x = 2; x <= 13; x++) px[y][x] = BODY;
+  for (let y = 7; y <= 11; y++) for (let x = 3; x <= 12; x++) px[y][x] = DETAIL;
+  // stripe
+  for (let x = 3; x <= 12; x++) px[9][x] = BODY;
+  // LED light
+  px[8][4] = LED;
+  // disc slot line
+  for (let x = 6; x <= 11; x++) px[8][x] = "#0a0a1a";
+  return spriteFromPixels(px, 1);
+}
+
 function monitorSprite(): Sprite {
   // 12x10 tiny monitor
   const _ = "";
@@ -528,7 +565,9 @@ type Prop =
   | { kind: "cooler"; tx: number; ty: number }
   | { kind: "painting"; tx: number; ty: number }
   | { kind: "coffeeTable"; tx: number; ty: number }
-  | { kind: "counter"; tx: number; ty: number };
+  | { kind: "counter"; tx: number; ty: number }
+  | { kind: "tv"; tx: number; ty: number }
+  | { kind: "playstation"; tx: number; ty: number };
 
 function buildFloor(): FloorKind[][] {
   const map: FloorKind[][] = [];
@@ -548,31 +587,30 @@ function buildFloor(): FloorKind[][] {
 
 const SITTING_OFFSET_Y = 4; // px: nudge character down into desk when sitting
 
-// Standard RPG layout: desk ABOVE, character BELOW facing UP toward monitor
+// Character ABOVE desk, facing DOWN so you see their face typing
 const DESK_POS: Record<RosterKey, { tx: number; ty: number }> = {
-  yuri: { tx: 3, ty: 2 },
-  glass: { tx: 2, ty: 11 },
-  epstein: { tx: 7, ty: 11 },
-  jarvis: { tx: 2, ty: 15 },
-  friday: { tx: 7, ty: 15 },
+  yuri: { tx: 3, ty: 5 },
+  glass: { tx: 2, ty: 13 },
+  epstein: { tx: 7, ty: 13 },
+  jarvis: { tx: 2, ty: 17 },
+  friday: { tx: 7, ty: 17 },
 };
 
 const SEATS: Record<RosterKey, { tx: number; ty: number; face: Dir }> = {
-  // Seat BELOW desk, facing UP toward monitor
-  yuri: { tx: 4, ty: 4, face: "up" },
-  glass: { tx: 3, ty: 13, face: "up" },
-  epstein: { tx: 8, ty: 13, face: "up" },
-  jarvis: { tx: 3, ty: 17, face: "up" },
-  friday: { tx: 8, ty: 17, face: "up" },
+  yuri: { tx: 4, ty: 4, face: "down" },
+  glass: { tx: 3, ty: 12, face: "down" },
+  epstein: { tx: 8, ty: 12, face: "down" },
+  jarvis: { tx: 3, ty: 16, face: "down" },
+  friday: { tx: 8, ty: 16, face: "down" },
 };
 
 function buildProps(): Prop[] {
   const p: Prop[] = [];
 
   // boss room (top-left)
-  p.push({ kind: "bookshelf", tx: 8, ty: 2 });
+  p.push({ kind: "bookshelf", tx: 2, ty: 2 });
   p.push({ kind: "plant", tx: 12, ty: 2 });
-  p.push({ kind: "plant", tx: 2, ty: 7 });
+  p.push({ kind: "plant", tx: 8, ty: 2 });
   p.push({ kind: "desk", tx: DESK_POS.yuri.tx, ty: DESK_POS.yuri.ty, owner: "yuri" });
 
   // main office desks
@@ -595,11 +633,12 @@ function buildProps(): Prop[] {
   p.push({ kind: "coffeeTable", tx: 20, ty: 6 });
   p.push({ kind: "plant", tx: 17, ty: 7 });
 
-  // lounge (bottom-right)
-  p.push({ kind: "couch", tx: 19, ty: 15 });
-  p.push({ kind: "coffeeTable", tx: 21, ty: 16 });
-  p.push({ kind: "painting", tx: 22, ty: 11 });
-  p.push({ kind: "bookshelf", tx: 26, ty: 14 });
+  // lounge (bottom-right) — TV + PlayStation + couch
+  p.push({ kind: "tv", tx: 22, ty: 11 });         // TV on wall
+  p.push({ kind: "playstation", tx: 23, ty: 12 }); // PS under TV
+  p.push({ kind: "couch", tx: 20, ty: 15 });       // couch facing TV
+  p.push({ kind: "coffeeTable", tx: 22, ty: 15 }); // table between couch and TV
+  p.push({ kind: "bookshelf", tx: 26, ty: 12 });
   p.push({ kind: "plant", tx: 28, ty: 18 });
   p.push({ kind: "plant", tx: 17, ty: 18 });
 
@@ -660,6 +699,8 @@ function buildBlocked(props: Prop[]) {
     if (pr.kind === "painting") {} // wall decor, no collision
     if (pr.kind === "coffeeTable") mark(pr.tx, pr.ty, 1, 1);
     if (pr.kind === "counter") mark(pr.tx, pr.ty, 2, 1);
+    if (pr.kind === "tv") {} // wall mounted
+    if (pr.kind === "playstation") mark(pr.tx, pr.ty, 1, 1);
     if (pr.kind === "plant") mark(pr.tx, pr.ty, 1, 1);
   }
 
@@ -823,6 +864,8 @@ type Sprites = {
   painting: Sprite;
   coffeeTable: Sprite;
   counter: Sprite;
+  tv: Sprite;
+  playstation: Sprite;
 };
 
 function buildSprites(): Sprites {
@@ -841,6 +884,8 @@ function buildSprites(): Sprites {
     painting: paintingSprite(),
     coffeeTable: coffeeTableSprite(),
     counter: counterSprite(),
+    tv: tvSprite(),
+    playstation: playstationSprite(),
   };
 }
 
@@ -906,6 +951,8 @@ function drawWorld(
     if (pr.kind === "painting") drawAt(sprites.painting, pr.tx, pr.ty);
     if (pr.kind === "coffeeTable") drawAt(sprites.coffeeTable, pr.tx, pr.ty);
     if (pr.kind === "counter") drawAt(sprites.counter, pr.tx, pr.ty);
+    if (pr.kind === "tv") drawAt(sprites.tv, pr.tx, pr.ty);
+    if (pr.kind === "playstation") drawAt(sprites.playstation, pr.tx, pr.ty);
   }
   for (const pr of props) {
     if (pr.kind === "plant") drawAt(sprites.plant, pr.tx, pr.ty);
@@ -1290,38 +1337,57 @@ export default function OfficePage() {
           }
 
           if (rt.path.length === 0 && (rt.nextDecisionMs === 0 || ms >= rt.nextDecisionMs) && nearTarget) {
-            const goSeat = Math.random() < 0.55;
-            if (goSeat) {
+            const roll = Math.random();
+            if (roll < 0.35) {
+              // Go back to desk
               const seat = SEATS[a.key];
               const dest = tileCenter(seat.tx, seat.ty);
               rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
               rt.goingToSeat = true;
               rt.anim = rt.path.length ? "walk" : "idle";
-              rt.nextDecisionMs = ms + randBetween(3500, 7000);
-            } else {
-              // wander spots (avoid door tiles)
-              const candidates: Array<{ tx: number; ty: number }> = [
-                { tx: 12, ty: 16 },
-                { tx: 3, ty: 13 },
-                { tx: 8, ty: 15 },
-                { tx: 19, ty: 3 },
-                { tx: 26, ty: 3 },
-                { tx: 22, ty: 16 },
-                { tx: 27, ty: 15 },
-                { tx: DOOR_BOSS.tx - 2, ty: DOOR_BOSS.ty + 2 },
+              rt.nextDecisionMs = ms + randBetween(5000, 10000);
+            } else if (roll < 0.55) {
+              // Go to lounge — watch TV / play PlayStation
+              const loungeDests = [
+                { tx: 21, ty: 16 }, // in front of TV on couch
+                { tx: 20, ty: 16 }, // couch left
+                { tx: 24, ty: 14 }, // near PlayStation
+                { tx: 19, ty: 17 }, // lounge corner
               ];
-              // pick until not near door
-              let pick = candidates[Math.floor(Math.random() * candidates.length)];
-              for (let i = 0; i < 6; i++) {
-                const p = tileCenter(pick.tx, pick.ty);
-                if (!isNearDoor(p.x, p.y)) break;
-                pick = candidates[Math.floor(Math.random() * candidates.length)];
-              }
+              const pick = loungeDests[Math.floor(Math.random() * loungeDests.length)];
               const dest = tileCenter(pick.tx, pick.ty);
               rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
               rt.goingToSeat = false;
               rt.anim = rt.path.length ? "walk" : "idle";
-              rt.nextDecisionMs = ms + randBetween(2500, 5200);
+              rt.nextDecisionMs = ms + randBetween(6000, 12000); // hang out longer
+            } else if (roll < 0.70) {
+              // Go to kitchen — get coffee/snack
+              const kitchenDests = [
+                { tx: 20, ty: 4 },  // near vending
+                { tx: 24, ty: 4 },  // near counter
+                { tx: 27, ty: 4 },  // near cooler
+                { tx: 21, ty: 7 },  // coffee table
+              ];
+              const pick = kitchenDests[Math.floor(Math.random() * kitchenDests.length)];
+              const dest = tileCenter(pick.tx, pick.ty);
+              rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
+              rt.goingToSeat = false;
+              rt.anim = rt.path.length ? "walk" : "idle";
+              rt.nextDecisionMs = ms + randBetween(4000, 8000);
+            } else {
+              // Wander around office randomly
+              const officeDests = [
+                { tx: 6, ty: 14 },  // between desks
+                { tx: 11, ty: 15 }, // near bookshelf
+                { tx: 5, ty: 18 },  // hallway
+                { tx: 10, ty: 11 }, // upper office
+              ];
+              const pick = officeDests[Math.floor(Math.random() * officeDests.length)];
+              const dest = tileCenter(pick.tx, pick.ty);
+              rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
+              rt.goingToSeat = false;
+              rt.anim = rt.path.length ? "walk" : "idle";
+              rt.nextDecisionMs = ms + randBetween(3000, 6000);
             }
           }
 
