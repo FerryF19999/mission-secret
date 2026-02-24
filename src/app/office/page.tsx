@@ -42,8 +42,12 @@ type CharacterRuntime = {
   sparkleUntilMs: number;
 
   // social / activity
-  activityBubble: string | null; // emoji/text to show above head
+  activityBubble: string | null;
   activityUntilMs: number;
+
+  // stuck detection
+  lastMoveMs: number;
+  lastPos: { x: number; y: number };
 };
 
 const TILE = 16;
@@ -1168,6 +1172,8 @@ export default function OfficePage() {
         sparkleUntilMs: 0,
         activityBubble: null,
         activityUntilMs: 0,
+        lastMoveMs: 0,
+        lastPos: { x: 0, y: 0 },
       };
       prevRunningRef.current[r.key] = false;
     }
@@ -1455,6 +1461,25 @@ export default function OfficePage() {
         // keep in bounds
         rt.x = clamp(rt.x, 8, INTERNAL_W - 8);
         rt.y = clamp(rt.y, 24, INTERNAL_H - 8);
+
+        // stuck detection: if barely moved for 4s, teleport to desk
+        const movedDist = Math.hypot(rt.x - rt.lastPos.x, rt.y - rt.lastPos.y);
+        if (movedDist > 2) {
+          rt.lastMoveMs = ms;
+          rt.lastPos = { x: rt.x, y: rt.y };
+        }
+        if (ms - rt.lastMoveMs > 4000 && rt.anim !== "work" && rt.path.length === 0) {
+          const seat = SEATS[a.key];
+          const sp = tileCenter(seat.tx, seat.ty);
+          rt.x = sp.x;
+          rt.y = sp.y;
+          rt.path = [];
+          rt.anim = "idle";
+          rt.dir = seat.face;
+          rt.lastMoveMs = ms;
+          rt.lastPos = { x: rt.x, y: rt.y };
+          rt.nextDecisionMs = ms + randBetween(3000, 6000);
+        }
 
         // anim clocks
         if (rt.anim === "walk") {
