@@ -4,58 +4,42 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 
+// Pixel Office v6 — single-file canvas scene.
+
 type AgentStatus = "active" | "busy" | "idle" | "offline";
-type RosterKey = "yuri" | "friday" | "jarvis" | "glass" | "epstein";
-
-type LiveAgent = { key: RosterKey; label: string; status: AgentStatus; task?: string };
-
+type RosterKey = "yuri" | "jarvis" | "friday" | "glass" | "epstein";
 type Dir = "down" | "left" | "right" | "up";
 
-type SpriteSheets = {
-  office?: HTMLImageElement;
-  characters?: HTMLImageElement;
+type LiveAgent = {
+  key: RosterKey;
+  label: string;
+  status: AgentStatus;
+  task?: string;
 };
 
-type AudioEngine = {
-  ctx: AudioContext;
-  master: GainNode;
-  ambient: {
-    gain: GainNode;
-    stop: () => void;
-  };
-};
-
-type CharacterMode = "spawn" | "walk" | "work" | "idle" | "sitting";
+type CharAnim = "walk" | "idle" | "work";
 
 type CharacterRuntime = {
-  // px in internal canvas space
-  x: number;
-  y: number;
+  x: number; // px (internal canvas)
+  y: number; // px (feet)
   dir: Dir;
 
-  mode: CharacterMode;
+  anim: CharAnim;
 
-  // pathing (tile centers)
-  path: Array<{ cx: number; cy: number }>; // in px
-  targetX: number;
-  targetY: number;
+  // pathing
+  path: Array<{ tx: number; ty: number }>;
+  target: { x: number; y: number };
   nextDecisionMs: number;
+  goingToSeat: boolean;
 
-  // anim
+  // anim clocks
   walkFrame: 0 | 1 | 2 | 3;
   walkAcc: number;
-  typingFrame: 0 | 1;
+  typingFrame: 5 | 6;
   typingAcc: number;
 
-  // return to desk after task
-  returnToDesk: boolean;
-
-  // spawn vfx
+  // sparkle on new run
   sparkleUntilMs: number;
-
-  // audio cadence
-  lastStepMs: number;
-  lastTypeMs: number;
 };
 
 const TILE = 16;
@@ -67,65 +51,71 @@ const ROWS = INTERNAL_H / TILE; // 20
 const FPS_CAP = 20;
 const FRAME_MS = 1000 / FPS_CAP;
 
-const ROSTER: Array<{ key: RosterKey; label: string; characterIndex: 0 | 1 | 2 | 3 | 4 }> = [
-  { key: "yuri", label: "Yuri", characterIndex: 0 },
-  { key: "jarvis", label: "Jarvis", characterIndex: 1 },
-  { key: "friday", label: "Friday", characterIndex: 2 },
-  { key: "glass", label: "Glass", characterIndex: 3 },
-  { key: "epstein", label: "Epstein", characterIndex: 4 },
+const PALETTE = {
+  woodA: "#A07828",
+  woodB: "#8B6914",
+  beigeA: "#D4C4A0",
+  beigeB: "#C4B490",
+  carpetA: "#4A6B7A",
+  carpetB: "#3D5A68",
+  wall: "#2D2D3D",
+  wallHi: "#3A3A52",
+  ink: "#0b1020",
+  uiText: "#e2e8f0",
+} as const;
+
+const ROSTER: Array<{ key: RosterKey; label: string; charIndex: 0 | 1 | 2 | 3 | 4 }> = [
+  { key: "yuri", label: "Yuri", charIndex: 0 },
+  { key: "jarvis", label: "Jarvis", charIndex: 1 },
+  { key: "friday", label: "Friday", charIndex: 2 },
+  { key: "glass", label: "Glass", charIndex: 3 },
+  { key: "epstein", label: "Epstein", charIndex: 4 },
 ];
 
-// --- Room layout ---
-// Left side: Yuri office (top-left), Main office (bottom-left)
-// Right side: Kitchen (top-right), Lounge (bottom-right)
-const SPLIT_X = 15; // tiles
-const SPLIT_Y = 10; // tiles
+// Layout splits (tiles)
+const SPLIT_X = 15; // vertical wall between left/right
+const SPLIT_Y = 10; // horizontal wall on right side between kitchen/lounge
 
-// Door / waypoints (tile centers)
-const YURI_DOOR_TILE = { tx: 7, ty: SPLIT_Y - 1 }; // bottom wall of Yuri office
-const MAIN_TO_RIGHT_DOOR_TILE = { tx: SPLIT_X, ty: 12 }; // doorway in vertical split wall
-const KITCHEN_TO_LOUNGE_DOOR_TILE = { tx: 22, ty: SPLIT_Y }; // doorway in horizontal split
+// Doorways (tiles)
+const DOOR_MAIN_RIGHT = { tx: SPLIT_X, ty: 12 };
+const DOOR_KITCHEN_LOUNGE = { tx: 22, ty: SPLIT_Y };
 
-function tileCenterPx(tx: number, ty: number) {
+// We model a small private office area at top-left ("boss room") separated by a wall with a door.
+const BOSS_WALL_Y = SPLIT_Y - 1;
+const DOOR_BOSS = { tx: 7, ty: BOSS_WALL_Y };
+
+const DOOR_TILES = [DOOR_BOSS, DOOR_MAIN_RIGHT, DOOR_KITCHEN_LOUNGE];
+
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
+}
+
+function randBetween(a: number, b: number) {
+  return a + Math.random() * (b - a);
+}
+
+function tileCenter(tx: number, ty: number) {
+  // foot anchor: slightly lower than tile center so head clears desks
   return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 + 4 };
 }
 
-const YURI_DOOR_POS = tileCenterPx(YURI_DOOR_TILE.tx, YURI_DOOR_TILE.ty);
+function toTile(px: number, py: number) {
+  const tx = clamp(Math.floor(px / TILE), 0, COLS - 1);
+  const ty = clamp(Math.floor((py - 4) / TILE), 0, ROWS - 1);
+  return { tx, ty };
+}
 
-// Collaboration desk inside Yuri's office — where spawned agents work alongside Yuri
-const YURI_OFFICE_COLLAB_SEAT: { x: number; y: number; face: Dir } = { ...tileCenterPx(10, 6), face: "down" };
+function dirFromDelta(dx: number, dy: number): Dir {
+  if (Math.abs(dx) > Math.abs(dy)) return dx < 0 ? "left" : "right";
+  return dy < 0 ? "up" : "down";
+}
 
-// Desk seat positions (px) — where characters sit/work (their own desks in main office)
-const SEATS: Record<RosterKey, { x: number; y: number; face: Dir }> = {
-  yuri: { ...tileCenterPx(5, 6), face: "down" },
-  jarvis: { ...tileCenterPx(4, 18), face: "down" },
-  friday: { ...tileCenterPx(9, 18), face: "down" },
-  glass: { ...tileCenterPx(4, 14), face: "down" },
-  epstein: { ...tileCenterPx(9, 14), face: "down" },
-};
-
-// Casual idle destinations (tile centers)
-const IDLE_DEST_TILES: Array<{ tx: number; ty: number; kind: "wander" | "kitchen" | "lounge" | "boss" | "peer" }> = [
-  { tx: 3, ty: 13, kind: "peer" },
-  { tx: 8, ty: 15, kind: "peer" },
-  { tx: 12, ty: 16, kind: "wander" },
-  { tx: 19, ty: 3, kind: "kitchen" }, // vending
-  { tx: 26, ty: 3, kind: "kitchen" }, // water/fridge
-  { tx: 22, ty: 16, kind: "lounge" }, // couch area
-  { tx: 27, ty: 15, kind: "lounge" },
-  { tx: YURI_DOOR_TILE.tx - 3, ty: YURI_DOOR_TILE.ty + 2, kind: "boss" },
-];
-
-// --- helpers ---
-
-function pickAgentFromList(list: any[] | undefined, key: string, label: string) {
-  if (!list) return undefined;
-  const lowerKey = key.toLowerCase();
-  const lowerLabel = label.toLowerCase();
-  return (
-    list.find((a: any) => (a.handle ?? "").toLowerCase() === lowerKey) ||
-    list.find((a: any) => (a.name ?? "").toLowerCase() === lowerLabel)
-  );
+function dirRowIndex(d: Dir) {
+  // rows: down(0), left(1), right(2), up(3)
+  if (d === "down") return 0;
+  if (d === "left") return 1;
+  if (d === "right") return 2;
+  return 3;
 }
 
 function statusColor(status: AgentStatus) {
@@ -134,267 +124,349 @@ function statusColor(status: AgentStatus) {
   return "#94a3b8";
 }
 
-function clamp(n: number, a: number, b: number) {
-  return Math.max(a, Math.min(b, n));
+function pickAgentFromList(list: any[] | undefined, key: string, label: string) {
+  if (!list) return undefined;
+  const lowerKey = key.toLowerCase();
+  const lowerLabel = label.toLowerCase();
+  return (
+    list.find((a: any) => String(a.handle ?? "").toLowerCase() === lowerKey) ||
+    list.find((a: any) => String(a.name ?? "").toLowerCase() === lowerLabel)
+  );
 }
 
-function loadImage(src: string) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image();
-    img.src = src;
-    img.onload = () => resolve(img);
-    img.onerror = (e) => reject(e);
-  });
+function wibNowParts(date = new Date()) {
+  const wib = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+  const hh = wib.getUTCHours();
+  const mm = wib.getUTCMinutes();
+  const ss = wib.getUTCSeconds();
+  return { hh, mm, ss };
 }
 
-function randBetween(a: number, b: number) {
-  return a + Math.random() * (b - a);
+function dayNightAlpha(hh: number) {
+  // brighter midday, darker nights
+  if (hh >= 6 && hh <= 17) {
+    const t = Math.abs(12 - hh) / 6; // 0..1
+    return 0.06 + t * 0.12;
+  }
+  const dist = hh >= 18 ? hh - 18 : hh + 6; // 0..11
+  const t = clamp(dist / 11, 0, 1);
+  return 0.28 + t * 0.16;
 }
 
-const DOOR_TILES = [YURI_DOOR_TILE, MAIN_TO_RIGHT_DOOR_TILE, KITCHEN_TO_LOUNGE_DOOR_TILE];
-
-function isNearDoor(px: number, py: number, radius = 1.5) {
-  const tx = Math.floor(px / TILE);
-  const ty = Math.floor((py - 4) / TILE);
+function isNearDoor(px: number, py: number, radiusTiles = 1.5) {
+  const { tx, ty } = toTile(px, py);
   for (const d of DOOR_TILES) {
-    if (Math.abs(tx - d.tx) <= radius && Math.abs(ty - d.ty) <= radius) return true;
+    if (Math.abs(tx - d.tx) <= radiusTiles && Math.abs(ty - d.ty) <= radiusTiles) return true;
   }
   return false;
 }
 
-function dirFromDelta(dx: number, dy: number): Dir {
-  if (Math.abs(dx) > Math.abs(dy)) return dx < 0 ? "left" : "right";
-  return dy < 0 ? "up" : "down";
-}
+// --- Sprite helpers (code-generated) ---
 
-function getDirIndex(d: Dir) {
-  // must match generator order: down,left,right,up
-  if (d === "down") return 0;
-  if (d === "left") return 1;
-  if (d === "right") return 2;
-  return 3;
-}
+type Sprite = { canvas: HTMLCanvasElement; w: number; h: number };
 
-// --- Audio (Web Audio API, no external files) ---
+function spriteFromPixels(pixels: string[][], scale = 1): Sprite {
+  const h = pixels.length;
+  const w = pixels[0]?.length ?? 0;
+  const canvas = document.createElement("canvas");
+  canvas.width = w * scale;
+  canvas.height = h * scale;
+  const ctx = canvas.getContext("2d")!;
+  ctx.imageSmoothingEnabled = false;
 
-function ensureAudioEngine(engineRef: React.MutableRefObject<AudioEngine | null>) {
-  if (engineRef.current) return engineRef.current;
-  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-  const master = ctx.createGain();
-  master.gain.value = 0.22;
-  master.connect(ctx.destination);
-
-  const ambientGain = ctx.createGain();
-  ambientGain.gain.value = 0.0;
-  ambientGain.connect(master);
-
-  const hum = ctx.createOscillator();
-  hum.type = "sine";
-  hum.frequency.value = 58;
-  const humGain = ctx.createGain();
-  humGain.gain.value = 0.025;
-  hum.connect(humGain);
-  humGain.connect(ambientGain);
-
-  const noiseLen = Math.max(1, Math.floor(ctx.sampleRate * 1.5));
-  const noiseBuf = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
-  const data = noiseBuf.getChannelData(0);
-  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.35;
-  const noise = ctx.createBufferSource();
-  noise.buffer = noiseBuf;
-  noise.loop = true;
-  const noiseFilter = ctx.createBiquadFilter();
-  noiseFilter.type = "bandpass";
-  noiseFilter.frequency.value = 420;
-  noiseFilter.Q.value = 0.7;
-  const noiseGain = ctx.createGain();
-  noiseGain.gain.value = 0.02;
-  noise.connect(noiseFilter);
-  noiseFilter.connect(noiseGain);
-  noiseGain.connect(ambientGain);
-
-  hum.start();
-  noise.start();
-
-  engineRef.current = {
-    ctx,
-    master,
-    ambient: {
-      gain: ambientGain,
-      stop: () => {
-        try {
-          hum.stop();
-          noise.stop();
-        } catch {
-          // ignore
-        }
-      },
-    },
-  };
-  return engineRef.current;
-}
-
-function withAudio(
-  engineRef: React.MutableRefObject<AudioEngine | null>,
-  muted: boolean,
-  fn: (ctx: AudioContext, master: GainNode) => void
-) {
-  if (muted) return;
-  const eng = ensureAudioEngine(engineRef);
-  if (eng.ctx.state === "suspended") eng.ctx.resume().catch(() => {});
-  fn(eng.ctx, eng.master);
-}
-
-function playTyping(engineRef: React.MutableRefObject<AudioEngine | null>, muted: boolean, intensity01 = 0.6) {
-  withAudio(engineRef, muted, (ctx, master) => {
-    const t0 = ctx.currentTime;
-    const dur = randBetween(0.008, 0.016);
-
-    const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) {
-      const env = Math.exp(-i / (len * 0.22));
-      d[i] = (Math.random() * 2 - 1) * env;
+  for (let y = 0; y < h; y++) {
+    const row = pixels[y];
+    for (let x = 0; x < w; x++) {
+      const c = row[x] ?? "";
+      if (!c) continue;
+      ctx.fillStyle = c;
+      ctx.fillRect(x * scale, y * scale, scale, scale);
     }
+  }
 
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-
-    const hp = ctx.createBiquadFilter();
-    hp.type = "highpass";
-    hp.frequency.setValueAtTime(900 + randBetween(-120, 180), t0);
-
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(0.012 * intensity01, t0 + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-
-    src.connect(hp);
-    hp.connect(g);
-    g.connect(master);
-    src.start(t0);
-    src.stop(t0 + dur);
-  });
+  return { canvas, w: canvas.width, h: canvas.height };
 }
 
-function playFootstep(engineRef: React.MutableRefObject<AudioEngine | null>, muted: boolean) {
-  withAudio(engineRef, muted, (ctx, master) => {
-    const t0 = ctx.currentTime;
-    const dur = randBetween(0.025, 0.04);
-
-    const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) {
-      const env = Math.exp(-i / (len * 0.28));
-      d[i] = (Math.random() * 2 - 1) * env;
+function tilePatternSprite(a: string, b: string, accent?: string): Sprite {
+  const px: string[][] = [];
+  for (let y = 0; y < 16; y++) {
+    const row: string[] = [];
+    for (let x = 0; x < 16; x++) {
+      const base = (x + y) % 2 === 0 ? a : b;
+      // add a little texture
+      let c = base;
+      if (accent && (x * 7 + y * 11) % 31 === 0) c = accent;
+      row.push(c);
     }
-
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const bp = ctx.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.frequency.setValueAtTime(220 + randBetween(-35, 35), t0);
-    bp.Q.value = 1.6;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(0.008, t0 + 0.005);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-
-    src.connect(bp);
-    bp.connect(g);
-    g.connect(master);
-    src.start(t0);
-    src.stop(t0 + dur);
-  });
+    px.push(row);
+  }
+  return spriteFromPixels(px, 1);
 }
 
-function playSpawn(engineRef: React.MutableRefObject<AudioEngine | null>, muted: boolean) {
-  withAudio(engineRef, muted, (ctx, master) => {
-    const t0 = ctx.currentTime;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(0.03, t0 + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
-    g.connect(master);
-
-    const o = ctx.createOscillator();
-    o.type = "triangle";
-    const f0 = randBetween(620, 740);
-    o.frequency.setValueAtTime(f0, t0);
-    o.frequency.exponentialRampToValueAtTime(f0 * 1.5, t0 + 0.12);
-    o.connect(g);
-    o.start(t0);
-    o.stop(t0 + 0.22);
-
-    const o2 = ctx.createOscillator();
-    o2.type = "sine";
-    o2.frequency.setValueAtTime(f0 * 2.0, t0 + 0.02);
-    const g2 = ctx.createGain();
-    g2.gain.setValueAtTime(0.0001, t0);
-    g2.gain.exponentialRampToValueAtTime(0.012, t0 + 0.03);
-    g2.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
-    o2.connect(g2);
-    g2.connect(master);
-    o2.start(t0 + 0.02);
-    o2.stop(t0 + 0.18);
-  });
+function wallTileSprite(): Sprite {
+  const W = PALETTE.wall;
+  const H = PALETTE.wallHi;
+  const px: string[][] = [];
+  for (let y = 0; y < 16; y++) {
+    const row: string[] = [];
+    for (let x = 0; x < 16; x++) {
+      let c: string = W;
+      if ((x + y) % 9 === 0) c = H;
+      if (y === 0 || y === 15 || x === 0 || x === 15) c = "#1f1f2a";
+      row.push(c);
+    }
+    px.push(row);
+  }
+  return spriteFromPixels(px, 1);
 }
 
-function playComplete(engineRef: React.MutableRefObject<AudioEngine | null>, muted: boolean) {
-  withAudio(engineRef, muted, (ctx, master) => {
-    const t0 = ctx.currentTime;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(0.035, t0 + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
-    g.connect(master);
-
-    const o = ctx.createOscillator();
-    o.type = "sine";
-    o.frequency.setValueAtTime(880, t0);
-    o.frequency.setValueAtTime(1174.66, t0 + 0.12);
-    o.connect(g);
-    o.start(t0);
-    o.stop(t0 + 0.28);
-  });
+function deskSprite(): Sprite {
+  // 32x32, warm wood, with a subtle front edge highlight
+  const _ = "";
+  const EDGE = "#6B4E0A";
+  const WOOD = "#8B6914";
+  const TOP = "#A07828";
+  const HI = "#B8922E";
+  const px: string[][] = [];
+  for (let y = 0; y < 32; y++) {
+    const row: string[] = [];
+    for (let x = 0; x < 32; x++) {
+      // rounded-ish silhouette
+      const inRect = x >= 1 && x <= 30 && y >= 1 && y <= 26;
+      if (!inRect) {
+        row.push(_);
+        continue;
+      }
+      let c = TOP;
+      if (y === 1 || y === 26 || x === 1 || x === 30) c = WOOD;
+      if (y === 13) c = WOOD;
+      if ((x + y) % 13 === 0) c = HI;
+      if (y === 26) c = EDGE;
+      row.push(c);
+    }
+    px.push(row);
+  }
+  // legs
+  for (let y = 27; y < 32; y++) {
+    for (let x = 0; x < 32; x++) {
+      const leg = (x >= 2 && x <= 4) || (x >= 27 && x <= 29);
+      if (leg && y <= 29) px[y][x] = EDGE;
+    }
+  }
+  return spriteFromPixels(px, 1);
 }
 
-// --- office sprite mapping (public/sprites/office.png) ---
-// The generator provides these coordinates; keep them stable.
-const officeSrc = {
-  wood: { x: 0, y: 0, w: 16, h: 16 },
-  beige: { x: 16, y: 0, w: 16, h: 16 },
-  carpet: { x: 32, y: 0, w: 16, h: 16 },
-  wallDark: { x: 48, y: 0, w: 16, h: 16 },
-  wallLight: { x: 64, y: 0, w: 16, h: 16 },
-  plant: { x: 0, y: 16, w: 16, h: 16 },
-  boxes: { x: 16, y: 16, w: 16, h: 16 },
-  chair: { x: 32, y: 16, w: 16, h: 16 },
-  bookshelf2x2: { x: 0, y: 32, w: 32, h: 32 },
-  desk2x2: { x: 32, y: 32, w: 32, h: 32 },
-  vending2x2: { x: 64, y: 32, w: 32, h: 32 },
-  couch2x1: { x: 96, y: 32, w: 32, h: 16 },
-  painting2x1: { x: 128, y: 32, w: 32, h: 16 },
-  counter2x1: { x: 160, y: 32, w: 32, h: 16 },
-  fridge1x2: { x: 192, y: 32, w: 16, h: 32 },
-  water1x2: { x: 208, y: 32, w: 16, h: 32 },
-} as const;
+function bookshelfSprite(): Sprite {
+  // 32x32
+  const _ = "";
+  const WOOD = "#8B6914";
+  const EDGE = "#6B4E0A";
+  const px: string[][] = [];
+  const books = ["#CC4444", "#4477AA", "#44AA66", "#CCAA33", "#9955AA", "#FF8844", "#22c55e", "#38bdf8"];
+  for (let y = 0; y < 32; y++) {
+    const row: string[] = [];
+    for (let x = 0; x < 32; x++) {
+      if (x === 0 || x === 31 || y === 0 || y === 31) {
+        row.push(EDGE);
+        continue;
+      }
+      // shelves
+      if (y === 8 || y === 16 || y === 24) {
+        row.push(WOOD);
+        continue;
+      }
+      // book area
+      const shelfBand = y < 8 ? 0 : y < 16 ? 1 : y < 24 ? 2 : 3;
+      const idx = (Math.floor(x / 3) + shelfBand * 2) % books.length;
+      let c = books[idx];
+      if (x % 3 === 0) c = "#2a2a3a"; // separators
+      if ((x + y) % 17 === 0) c = "#e2e8f0"; // occasional label
+      row.push(c);
+    }
+    px.push(row);
+  }
+  return spriteFromPixels(px, 1);
+}
 
-type TileKind = "wood" | "beige" | "carpet";
+function plantSprite(): Sprite {
+  // 16x16: pot + leaves
+  const _ = "";
+  const G1 = "#3D8B37";
+  const G2 = "#2D6B27";
+  const POT = "#f8fafc";
+  const SH = "#cbd5e1";
+  const px: string[][] = Array.from({ length: 16 }, () => Array.from({ length: 16 }, () => _));
+  // leaves
+  const dots = [
+    [7, 2],
+    [6, 3],
+    [8, 3],
+    [5, 4],
+    [7, 4],
+    [9, 4],
+    [6, 5],
+    [8, 5],
+    [7, 6],
+    [6, 6],
+    [8, 6],
+  ];
+  for (const [x, y] of dots) px[y][x] = (x + y) % 2 ? G1 : G2;
+  // pot
+  for (let y = 10; y <= 14; y++) {
+    for (let x = 5; x <= 10; x++) px[y][x] = POT;
+  }
+  for (let x = 4; x <= 11; x++) px[10][x] = SH;
+  for (let x = 5; x <= 10; x++) px[14][x] = SH;
+  return spriteFromPixels(px, 1);
+}
 
-function buildTilemap(): TileKind[][] {
-  const map: TileKind[][] = [];
+function vendingSprite(): Sprite {
+  // 32x32
+  const _ = "";
+  const D = "#111827";
+  const M = "#334155";
+  const H = "#475569";
+  const G = "#22c55e";
+  const B = "#38bdf8";
+  const R = "#fb7185";
+  const px: string[][] = Array.from({ length: 32 }, () => Array.from({ length: 32 }, () => _));
+  // body
+  for (let y = 1; y <= 30; y++) {
+    for (let x = 6; x <= 25; x++) px[y][x] = M;
+  }
+  // outline
+  for (let x = 6; x <= 25; x++) {
+    px[1][x] = D;
+    px[30][x] = D;
+  }
+  for (let y = 1; y <= 30; y++) {
+    px[y][6] = D;
+    px[y][25] = D;
+  }
+  // glass window
+  for (let y = 4; y <= 22; y++) {
+    for (let x = 8; x <= 18; x++) px[y][x] = "#0b1220";
+  }
+  for (let y = 5; y <= 21; y++) {
+    for (let x = 9; x <= 17; x++) px[y][x] = (x + y) % 3 === 0 ? "#0f172a" : "#111827";
+  }
+  // snacks
+  const snackCols = [G, B, R, "#f59e0b", "#a78bfa"];
+  for (let i = 0; i < 18; i++) {
+    const x = 9 + (i % 3) * 3;
+    const y = 6 + Math.floor(i / 3) * 3;
+    const c = snackCols[i % snackCols.length];
+    px[y][x] = c;
+    px[y][x + 1] = c;
+  }
+  // keypad
+  for (let y = 8; y <= 20; y++) {
+    for (let x = 20; x <= 23; x++) px[y][x] = H;
+  }
+  px[10][21] = "#e2e8f0";
+  px[12][22] = "#e2e8f0";
+  // slot
+  for (let x = 10; x <= 22; x++) px[26][x] = D;
+
+  return spriteFromPixels(px, 1);
+}
+
+function couchSprite(): Sprite {
+  // 32x16
+  const _ = "";
+  const S = "#1f2937";
+  const C = "#334155";
+  const H = "#475569";
+  const px: string[][] = Array.from({ length: 16 }, () => Array.from({ length: 32 }, () => _));
+  for (let y = 3; y <= 14; y++) {
+    for (let x = 2; x <= 29; x++) px[y][x] = C;
+  }
+  // back
+  for (let y = 1; y <= 4; y++) for (let x = 2; x <= 29; x++) px[y][x] = H;
+  // outline
+  for (let x = 2; x <= 29; x++) {
+    px[1][x] = S;
+    px[14][x] = S;
+  }
+  for (let y = 1; y <= 14; y++) {
+    px[y][2] = S;
+    px[y][29] = S;
+  }
+  // cushions
+  for (let y = 6; y <= 12; y++) {
+    px[y][10] = S;
+    px[y][20] = S;
+  }
+  return spriteFromPixels(px, 1);
+}
+
+function coolerSprite(): Sprite {
+  // 16x32
+  const _ = "";
+  const F = "#cbd5e1";
+  const W = "#93c5fd";
+  const D = "#64748b";
+  const B = "#0f172a";
+  const px: string[][] = Array.from({ length: 32 }, () => Array.from({ length: 16 }, () => _));
+  // bottle
+  for (let y = 1; y <= 10; y++) for (let x = 4; x <= 11; x++) px[y][x] = W;
+  for (let x = 5; x <= 10; x++) px[0 + 1][x] = D;
+  // dispenser body
+  for (let y = 11; y <= 29; y++) for (let x = 3; x <= 12; x++) px[y][x] = F;
+  // outline
+  for (let y = 11; y <= 29; y++) {
+    px[y][3] = D;
+    px[y][12] = D;
+  }
+  for (let x = 3; x <= 12; x++) {
+    px[11][x] = D;
+    px[29][x] = D;
+  }
+  // tap
+  px[18][7] = B;
+  px[19][7] = B;
+  px[20][7] = B;
+  // base
+  for (let y = 30; y <= 31; y++) for (let x = 4; x <= 11; x++) px[y][x] = D;
+  return spriteFromPixels(px, 1);
+}
+
+function monitorSprite(): Sprite {
+  // 12x10 tiny monitor
+  const _ = "";
+  const B = "#0b1220";
+  const F = "#334155";
+  const px: string[][] = Array.from({ length: 10 }, () => Array.from({ length: 12 }, () => _));
+  for (let y = 0; y < 7; y++) for (let x = 0; x < 12; x++) px[y][x] = F;
+  for (let y = 1; y < 6; y++) for (let x = 1; x < 11; x++) px[y][x] = B;
+  // stand
+  for (let y = 7; y < 10; y++) for (let x = 4; x < 8; x++) px[y][x] = F;
+  px[9][3] = F;
+  px[9][8] = F;
+  return spriteFromPixels(px, 1);
+}
+
+// --- World model ---
+
+type FloorKind = "wood" | "beige" | "carpet";
+
+type Prop =
+  | { kind: "desk"; tx: number; ty: number; owner?: RosterKey }
+  | { kind: "bookshelf"; tx: number; ty: number }
+  | { kind: "plant"; tx: number; ty: number }
+  | { kind: "vending"; tx: number; ty: number }
+  | { kind: "couch"; tx: number; ty: number }
+  | { kind: "cooler"; tx: number; ty: number };
+
+function buildFloor(): FloorKind[][] {
+  const map: FloorKind[][] = [];
   for (let r = 0; r < ROWS; r++) {
-    const row: TileKind[] = [];
+    const row: FloorKind[] = [];
     for (let c = 0; c < COLS; c++) {
       const right = c >= SPLIT_X;
       const top = r < SPLIT_Y;
-      const inKitchen = right && top;
-      const inLounge = right && !top;
-      if (inKitchen) row.push("beige");
-      else if (inLounge) row.push("carpet");
+      if (right && top) row.push("beige");
+      else if (right && !top) row.push("carpet");
       else row.push("wood");
     }
     map.push(row);
@@ -402,67 +474,55 @@ function buildTilemap(): TileKind[][] {
   return map;
 }
 
-type Prop =
-  | { kind: "bookshelf"; tx: number; ty: number }
-  | { kind: "desk"; tx: number; ty: number }
-  | { kind: "chair"; tx: number; ty: number }
-  | { kind: "plant"; tx: number; ty: number }
-  | { kind: "boxes"; tx: number; ty: number }
-  | { kind: "vending"; tx: number; ty: number }
-  | { kind: "couch"; tx: number; ty: number }
-  | { kind: "painting"; tx: number; ty: number }
-  | { kind: "counter"; tx: number; ty: number }
-  | { kind: "fridge"; tx: number; ty: number }
-  | { kind: "water"; tx: number; ty: number };
+const SEATS: Record<RosterKey, { tx: number; ty: number; face: Dir }> = {
+  // boss room
+  yuri: { tx: 5, ty: 6, face: "down" },
+  // main office desks
+  glass: { tx: 4, ty: 14, face: "down" },
+  epstein: { tx: 9, ty: 14, face: "down" },
+  jarvis: { tx: 4, ty: 18, face: "down" },
+  friday: { tx: 9, ty: 18, face: "down" },
+};
+
+const DESK_POS: Record<RosterKey, { tx: number; ty: number }> = {
+  yuri: { tx: 3, ty: 4 },
+  glass: { tx: 2, ty: 12 },
+  epstein: { tx: 7, ty: 12 },
+  jarvis: { tx: 2, ty: 16 },
+  friday: { tx: 7, ty: 16 },
+};
 
 function buildProps(): Prop[] {
   const p: Prop[] = [];
 
-  // Yuri office (top-left)
-  p.push({ kind: "bookshelf", tx: 1, ty: 1 });
-  p.push({ kind: "plant", tx: 12, ty: 1 });
-  // Yuri's big desk (hack: desk + counter extension)
-  p.push({ kind: "desk", tx: 3, ty: 4 });
-  p.push({ kind: "counter", tx: 5, ty: 4 });
-  p.push({ kind: "chair", tx: 4, ty: 6 });
+  // boss room (top-left)
+  p.push({ kind: "bookshelf", tx: 2, ty: 2 });
+  p.push({ kind: "plant", tx: 12, ty: 2 });
+  p.push({ kind: "desk", tx: DESK_POS.yuri.tx, ty: DESK_POS.yuri.ty, owner: "yuri" });
 
-  // Collaboration desk in Yuri's office (for spawned agents)
-  p.push({ kind: "desk", tx: 9, ty: 4 });
-  p.push({ kind: "chair", tx: 10, ty: 6 });
+  // main office desks
+  p.push({ kind: "desk", tx: DESK_POS.glass.tx, ty: DESK_POS.glass.ty, owner: "glass" });
+  p.push({ kind: "desk", tx: DESK_POS.epstein.tx, ty: DESK_POS.epstein.ty, owner: "epstein" });
+  p.push({ kind: "desk", tx: DESK_POS.jarvis.tx, ty: DESK_POS.jarvis.ty, owner: "jarvis" });
+  p.push({ kind: "desk", tx: DESK_POS.friday.tx, ty: DESK_POS.friday.ty, owner: "friday" });
 
-  // Main office (bottom-left) 4 desks
-  p.push({ kind: "desk", tx: 2, ty: 12 });
-  p.push({ kind: "chair", tx: 3, ty: 14 });
-
-  p.push({ kind: "desk", tx: 7, ty: 12 });
-  p.push({ kind: "chair", tx: 8, ty: 14 });
-
-  p.push({ kind: "desk", tx: 2, ty: 16 });
-  p.push({ kind: "chair", tx: 3, ty: 18 });
-
-  p.push({ kind: "desk", tx: 7, ty: 16 });
-  p.push({ kind: "chair", tx: 8, ty: 18 });
-
-  // main office decor
-  p.push({ kind: "boxes", tx: 12, ty: 12 });
+  // decor main office
+  p.push({ kind: "bookshelf", tx: 11, ty: 12 });
   p.push({ kind: "plant", tx: 13, ty: 18 });
 
-  // Kitchen (top-right)
+  // kitchen
   p.push({ kind: "vending", tx: 18, ty: 2 });
-  p.push({ kind: "counter", tx: 22, ty: 2 });
-  p.push({ kind: "water", tx: 26, ty: 2 });
-  p.push({ kind: "fridge", tx: 28, ty: 2 });
+  p.push({ kind: "cooler", tx: 28, ty: 2 });
+  p.push({ kind: "plant", tx: 25, ty: 2 });
 
-  // Lounge (bottom-right)
+  // lounge
   p.push({ kind: "couch", tx: 19, ty: 15 });
-  p.push({ kind: "painting", tx: 22, ty: 12 });
   p.push({ kind: "bookshelf", tx: 26, ty: 14 });
   p.push({ kind: "plant", tx: 28, ty: 18 });
 
   return p;
 }
 
-// Collision grid
 function buildBlocked(props: Prop[]) {
   const blocked: boolean[][] = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => false));
 
@@ -484,120 +544,103 @@ function buildBlocked(props: Prop[]) {
     blocked[y][COLS - 1] = true;
   }
 
-  // vertical split wall, leave a doorway
+  // main vertical wall split
   for (let y = 0; y < ROWS; y++) {
-    if (y === MAIN_TO_RIGHT_DOOR_TILE.ty) continue;
+    if (y === DOOR_MAIN_RIGHT.ty) continue;
     blocked[y][SPLIT_X] = true;
   }
 
-  // horizontal split wall on right side (kitchen/lounge), doorway
+  // right horizontal split
   for (let x = SPLIT_X; x < COLS; x++) {
-    if (x === KITCHEN_TO_LOUNGE_DOOR_TILE.tx) continue;
+    if (x === DOOR_KITCHEN_LOUNGE.tx) continue;
     blocked[SPLIT_Y][x] = true;
   }
 
-  // Yuri office private wall: horizontal at splitY, left side; doorway at YURI_DOOR_TILE
+  // boss room separation wall (horizontal)
   for (let x = 0; x < SPLIT_X; x++) {
-    if (x === YURI_DOOR_TILE.tx) continue;
-    blocked[SPLIT_Y - 1][x] = true;
+    if (x === DOOR_BOSS.tx) continue;
+    blocked[BOSS_WALL_Y][x] = true;
   }
 
-  // add some interior walls to make Yuri office feel enclosed (left + right + top)
-  for (let y = 1; y < SPLIT_Y - 1; y++) blocked[y][SPLIT_X - 1] = true; // right wall of Yuri office
-  for (let y = 1; y < SPLIT_Y - 1; y++) blocked[y][1] = true; // left wall
-  for (let x = 1; x < SPLIT_X - 1; x++) blocked[1][x] = true; // top wall
+  // boss room enclosure (top and side walls as collision)
+  for (let y = 1; y < BOSS_WALL_Y; y++) blocked[y][1] = true;
+  for (let y = 1; y < BOSS_WALL_Y; y++) blocked[y][SPLIT_X - 1] = true;
+  for (let x = 1; x < SPLIT_X - 1; x++) blocked[1][x] = true;
 
-  // props
+  // props collision
   for (const pr of props) {
-    if (pr.kind === "bookshelf") mark(pr.tx, pr.ty, 2, 2);
     if (pr.kind === "desk") mark(pr.tx, pr.ty, 2, 2);
+    if (pr.kind === "bookshelf") mark(pr.tx, pr.ty, 2, 2);
     if (pr.kind === "vending") mark(pr.tx, pr.ty, 2, 2);
     if (pr.kind === "couch") mark(pr.tx, pr.ty, 2, 1);
-    if (pr.kind === "painting") mark(pr.tx, pr.ty, 2, 1);
-    if (pr.kind === "counter") mark(pr.tx, pr.ty, 2, 1);
-    if (pr.kind === "fridge") mark(pr.tx, pr.ty, 1, 2);
-    if (pr.kind === "water") mark(pr.tx, pr.ty, 1, 2);
+    if (pr.kind === "cooler") mark(pr.tx, pr.ty, 1, 2);
     if (pr.kind === "plant") mark(pr.tx, pr.ty, 1, 1);
-    if (pr.kind === "boxes") mark(pr.tx, pr.ty, 1, 1);
-    if (pr.kind === "chair") mark(pr.tx, pr.ty, 1, 1);
   }
 
-  // allow doors
-  blocked[YURI_DOOR_TILE.ty][YURI_DOOR_TILE.tx] = false;
-  blocked[MAIN_TO_RIGHT_DOOR_TILE.ty][MAIN_TO_RIGHT_DOOR_TILE.tx] = false;
-  blocked[KITCHEN_TO_LOUNGE_DOOR_TILE.ty][KITCHEN_TO_LOUNGE_DOOR_TILE.tx] = false;
+  // doors are passable
+  blocked[DOOR_MAIN_RIGHT.ty][DOOR_MAIN_RIGHT.tx] = false;
+  blocked[DOOR_KITCHEN_LOUNGE.ty][DOOR_KITCHEN_LOUNGE.tx] = false;
+  blocked[DOOR_BOSS.ty][DOOR_BOSS.tx] = false;
 
-  // allow all seat tiles (chairs block them but agents need to sit there)
-  for (const s of Object.values(SEATS)) {
-    const tx = clamp(Math.floor(s.x / TILE), 0, COLS - 1);
-    const ty = clamp(Math.floor((s.y - 4) / TILE), 0, ROWS - 1);
-    blocked[ty][tx] = false;
-  }
-  // collab seat
-  {
-    const tx = clamp(Math.floor(YURI_OFFICE_COLLAB_SEAT.x / TILE), 0, COLS - 1);
-    const ty = clamp(Math.floor((YURI_OFFICE_COLLAB_SEAT.y - 4) / TILE), 0, ROWS - 1);
-    blocked[ty][tx] = false;
-  }
+  // seat tiles must be passable
+  for (const s of Object.values(SEATS)) blocked[s.ty][s.tx] = false;
 
   return blocked;
 }
 
-// A* pathfind on tiles; return list of centers (px)
-function aStar(blocked: boolean[][], fromPx: { x: number; y: number }, toPx: { x: number; y: number }) {
-  const from = { tx: clamp(Math.floor(fromPx.x / TILE), 0, COLS - 1), ty: clamp(Math.floor((fromPx.y - 4) / TILE), 0, ROWS - 1) };
-  const to = { tx: clamp(Math.floor(toPx.x / TILE), 0, COLS - 1), ty: clamp(Math.floor((toPx.y - 4) / TILE), 0, ROWS - 1) };
+// A* pathfinding on tiles
+function aStar(blocked: boolean[][], from: { x: number; y: number }, to: { x: number; y: number }) {
+  const s = toTile(from.x, from.y);
+  const g = toTile(to.x, to.y);
 
   const key = (tx: number, ty: number) => `${tx},${ty}`;
-  const h = (tx: number, ty: number) => Math.abs(tx - to.tx) + Math.abs(ty - to.ty);
+  const h = (tx: number, ty: number) => Math.abs(tx - g.tx) + Math.abs(ty - g.ty);
 
-  const open: Array<{ tx: number; ty: number; f: number; g: number }> = [{ tx: from.tx, ty: from.ty, f: h(from.tx, from.ty), g: 0 }];
+  const open: Array<{ tx: number; ty: number; f: number; g: number }> = [{ tx: s.tx, ty: s.ty, g: 0, f: h(s.tx, s.ty) }];
   const came = new Map<string, string>();
   const gScore = new Map<string, number>();
-  gScore.set(key(from.tx, from.ty), 0);
+  gScore.set(key(s.tx, s.ty), 0);
 
   const dirs = [
-    { dx: 1, dy: 0 },
-    { dx: -1, dy: 0 },
-    { dx: 0, dy: 1 },
-    { dx: 0, dy: -1 },
-  ];
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const;
 
   const inBounds = (tx: number, ty: number) => tx >= 0 && tx < COLS && ty >= 0 && ty < ROWS;
 
   while (open.length) {
     open.sort((a, b) => a.f - b.f);
     const cur = open.shift()!;
-    if (cur.tx === to.tx && cur.ty === to.ty) {
-      const pathTiles: Array<{ tx: number; ty: number }> = [{ tx: cur.tx, ty: cur.ty }];
+
+    if (cur.tx === g.tx && cur.ty === g.ty) {
+      const path: Array<{ tx: number; ty: number }> = [{ tx: cur.tx, ty: cur.ty }];
       let ck = key(cur.tx, cur.ty);
       while (came.has(ck)) {
         const prev = came.get(ck)!;
         const [px, py] = prev.split(",").map((n) => parseInt(n, 10));
-        pathTiles.push({ tx: px, ty: py });
+        path.push({ tx: px, ty: py });
         ck = prev;
       }
-      pathTiles.reverse();
-      return pathTiles.map((t) => {
-        const c = tileCenterPx(t.tx, t.ty);
-        return { cx: c.x, cy: c.y };
-      });
+      path.reverse();
+      return path;
     }
 
-    for (const { dx, dy } of dirs) {
+    for (const [dx, dy] of dirs) {
       const nx = cur.tx + dx;
       const ny = cur.ty + dy;
       if (!inBounds(nx, ny)) continue;
       if (blocked[ny][nx]) continue;
 
       const nk = key(nx, ny);
-      const tentativeG = cur.g + 1;
-      const prevG = gScore.get(nk);
-      if (prevG == null || tentativeG < prevG) {
+      const tentative = cur.g + 1;
+      const prev = gScore.get(nk);
+      if (prev == null || tentative < prev) {
         came.set(nk, key(cur.tx, cur.ty));
-        gScore.set(nk, tentativeG);
-        const f = tentativeG + h(nx, ny);
-        if (!open.find((n) => n.tx === nx && n.ty === ny)) open.push({ tx: nx, ty: ny, g: tentativeG, f });
+        gScore.set(nk, tentative);
+        const f = tentative + h(nx, ny);
+        if (!open.find((n) => n.tx === nx && n.ty === ny)) open.push({ tx: nx, ty: ny, g: tentative, f });
       }
     }
   }
@@ -605,116 +648,12 @@ function aStar(blocked: boolean[][], fromPx: { x: number; y: number }, toPx: { x
   return [];
 }
 
-function drawOffice(ctx: CanvasRenderingContext2D, officeImg: HTMLImageElement, tilemap: TileKind[][], props: Prop[]) {
-  // base tiles
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const kind = tilemap[r][c];
-      const src = kind === "wood" ? officeSrc.wood : kind === "beige" ? officeSrc.beige : officeSrc.carpet;
-      ctx.drawImage(officeImg, src.x, src.y, src.w, src.h, c * TILE, r * TILE, TILE, TILE);
-    }
-  }
-
-  // walls/borders
-  const wall = (tx: number, ty: number, dark = false) => {
-    const src = dark ? officeSrc.wallDark : officeSrc.wallLight;
-    ctx.drawImage(officeImg, src.x, src.y, 16, 16, tx * TILE, ty * TILE, TILE, TILE);
-  };
-
-  // outer
-  for (let x = 0; x < COLS; x++) {
-    wall(x, 0, true);
-    wall(x, ROWS - 1, true);
-  }
-  for (let y = 0; y < ROWS; y++) {
-    wall(0, y, true);
-    wall(COLS - 1, y, true);
-  }
-
-  // vertical split wall (between left/right)
-  for (let y = 0; y < ROWS; y++) {
-    if (y === MAIN_TO_RIGHT_DOOR_TILE.ty) continue;
-    wall(SPLIT_X, y, true);
-  }
-
-  // horizontal split on right (kitchen/lounge)
-  for (let x = SPLIT_X; x < COLS; x++) {
-    if (x === KITCHEN_TO_LOUNGE_DOOR_TILE.tx) continue;
-    wall(x, SPLIT_Y, true);
-  }
-
-  // Yuri office private wall (bottom of top-left)
-  for (let x = 0; x < SPLIT_X; x++) {
-    if (x === YURI_DOOR_TILE.tx) continue;
-    wall(x, SPLIT_Y - 1, false);
-  }
-  // Yuri office enclosure
-  for (let y = 1; y < SPLIT_Y - 1; y++) {
-    wall(1, y, false);
-    wall(SPLIT_X - 1, y, false);
-  }
-  for (let x = 1; x < SPLIT_X - 1; x++) wall(x, 1, false);
-
-  // props (painterly)
-  const drawProp = (src: { x: number; y: number; w: number; h: number }, tx: number, ty: number) => {
-    ctx.drawImage(officeImg, src.x, src.y, src.w, src.h, tx * TILE, ty * TILE, src.w, src.h);
-  };
-
-  for (const pr of props) {
-    if (pr.kind === "bookshelf") drawProp(officeSrc.bookshelf2x2, pr.tx, pr.ty);
-    if (pr.kind === "desk") drawProp(officeSrc.desk2x2, pr.tx, pr.ty);
-    if (pr.kind === "vending") drawProp(officeSrc.vending2x2, pr.tx, pr.ty);
-    if (pr.kind === "couch") drawProp(officeSrc.couch2x1, pr.tx, pr.ty);
-    if (pr.kind === "painting") drawProp(officeSrc.painting2x1, pr.tx, pr.ty);
-    if (pr.kind === "counter") drawProp(officeSrc.counter2x1, pr.tx, pr.ty);
-    if (pr.kind === "fridge") drawProp(officeSrc.fridge1x2, pr.tx, pr.ty);
-    if (pr.kind === "water") drawProp(officeSrc.water1x2, pr.tx, pr.ty);
-  }
-  for (const pr of props) {
-    if (pr.kind === "plant") drawProp(officeSrc.plant, pr.tx, pr.ty);
-    if (pr.kind === "boxes") drawProp(officeSrc.boxes, pr.tx, pr.ty);
-    if (pr.kind === "chair") drawProp(officeSrc.chair, pr.tx, pr.ty);
-  }
-
-  // room labels (subtle)
-  ctx.font = "8px ui-sans-serif, system-ui";
-  ctx.fillStyle = "rgba(255,255,255,0.25)";
-  ctx.fillText("YURI", 3 * TILE, 2 * TILE + 2);
-  ctx.fillText("MAIN", 2 * TILE, 11 * TILE + 2);
-  ctx.fillText("KITCHEN", 17 * TILE, 2 * TILE + 2);
-  ctx.fillText("LOUNGE", 18 * TILE, 12 * TILE + 2);
-}
-
-function drawLabel(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, color: string, dot: string) {
-  ctx.font = "7px ui-sans-serif, system-ui, -apple-system, Segoe UI";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "bottom";
-
-  // shadow
-  ctx.fillStyle = "rgba(0,0,0,0.65)";
-  ctx.fillText(text, x + 1, y + 1);
-
-  // dot
-  ctx.fillStyle = "rgba(0,0,0,0.55)";
-  ctx.beginPath();
-  ctx.arc(x - Math.ceil(ctx.measureText(text).width / 2) - 5, y - 3, 2.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = dot;
-  ctx.beginPath();
-  ctx.arc(x - Math.ceil(ctx.measureText(text).width / 2) - 5, y - 3, 2, 0, Math.PI * 2);
-  ctx.fill();
-
-  // text
-  ctx.fillStyle = color;
-  ctx.fillText(text, x, y);
-}
-
 function drawSparkle(ctx: CanvasRenderingContext2D, x: number, y: number, t01: number) {
   const a = 1 - t01;
   const r = 2 + t01 * 6;
   ctx.save();
-  ctx.globalAlpha = 0.85 * a;
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.globalAlpha = 0.9 * a;
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
   ctx.beginPath();
   ctx.moveTo(x, y - r);
   ctx.lineTo(x + 1.5, y - 1.5);
@@ -726,8 +665,7 @@ function drawSparkle(ctx: CanvasRenderingContext2D, x: number, y: number, t01: n
   ctx.lineTo(x - 1.5, y - 1.5);
   ctx.closePath();
   ctx.fill();
-
-  ctx.globalAlpha = 0.55 * a;
+  ctx.globalAlpha = 0.5 * a;
   ctx.fillStyle = "rgba(56,189,248,0.9)";
   ctx.beginPath();
   ctx.arc(x, y, 1.5 + t01 * 2.2, 0, Math.PI * 2);
@@ -735,104 +673,46 @@ function drawSparkle(ctx: CanvasRenderingContext2D, x: number, y: number, t01: n
   ctx.restore();
 }
 
-function drawCharacter(
-  ctx: CanvasRenderingContext2D,
-  charactersImg: HTMLImageElement,
-  characterIndex: number,
-  runtime: CharacterRuntime,
-  status: AgentStatus,
-  label: string,
-  selected: boolean
-) {
-  const CHAR_W = 16;
-  const CHAR_H = 20;
-  const WALK_COL0 = 0;
-  const IDLE_COL = 4;
-  const TYPE_COL0 = 5;
-  const TYPE_COL1 = 6;
+function drawLabel(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, color: string, dot: string) {
+  ctx.font = "7px ui-sans-serif, system-ui, -apple-system, Segoe UI";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
 
-  const dirIndex = getDirIndex(runtime.dir);
-  const row = characterIndex * 4 + dirIndex;
+  ctx.fillStyle = "rgba(0,0,0,0.65)";
+  ctx.fillText(text, x + 1, y + 1);
 
-  let col = IDLE_COL;
-  if (runtime.mode === "work" && (status === "active" || status === "busy")) {
-    col = runtime.typingFrame === 0 ? TYPE_COL0 : TYPE_COL1;
-  } else {
-    const moving = runtime.mode === "walk" || runtime.mode === "spawn";
-    col = moving ? WALK_COL0 + runtime.walkFrame : IDLE_COL;
-  }
-
-  const srcX = col * CHAR_W;
-  const srcY = row * CHAR_H;
-
-  const drawX = Math.round(runtime.x - CHAR_W / 2);
-  const drawY = Math.round(runtime.y - CHAR_H);
-
-  // shadow
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  const half = Math.ceil(ctx.measureText(text).width / 2);
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
   ctx.beginPath();
-  ctx.ellipse(runtime.x, runtime.y - 4, 7, 4, 0, 0, Math.PI * 2);
+  ctx.arc(x - half - 5, y - 3, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = dot;
+  ctx.beginPath();
+  ctx.arc(x - half - 5, y - 3, 2.0, 0, Math.PI * 2);
   ctx.fill();
 
-  if (selected) {
-    ctx.fillStyle = "rgba(56,189,248,0.18)";
-    ctx.beginPath();
-    ctx.ellipse(runtime.x, runtime.y - 4, 11, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.drawImage(charactersImg, srcX, srcY, CHAR_W, CHAR_H, drawX, drawY, CHAR_W, CHAR_H);
-
-  drawLabel(
-    ctx,
-    runtime.x,
-    drawY - 2,
-    label,
-    selected ? "#38bdf8" : "rgba(255,255,255,0.9)",
-    statusColor(status)
-  );
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
 }
 
-function isPointInCharacter(px: number, py: number, runtime: CharacterRuntime) {
-  const CHAR_W = 16;
-  const CHAR_H = 20;
-  const x0 = runtime.x - CHAR_W / 2;
-  const y0 = runtime.y - CHAR_H;
-  return px >= x0 && px <= x0 + CHAR_W && py >= y0 && py <= y0 + CHAR_H;
+function isPointInCharacter(px: number, py: number, rt: CharacterRuntime) {
+  const W = 16;
+  const H = 24;
+  const x0 = rt.x - W / 2;
+  const y0 = rt.y - H;
+  return px >= x0 && px <= x0 + W && py >= y0 && py <= y0 + H;
 }
 
-function wibNowParts(date = new Date()) {
-  const wib = new Date(date.getTime() + 7 * 60 * 60 * 1000);
-  const hh = wib.getUTCHours();
-  const mm = wib.getUTCMinutes();
-  const ss = wib.getUTCSeconds();
-  return { hh, mm, ss };
-}
-
-function dayNightOverlayAlpha(hh: number) {
-  // Brightest ~11-15, darkest at night.
-  if (hh >= 6 && hh <= 17) {
-    // daytime 0.05..0.18
-    const t = Math.abs(12 - hh) / 6;
-    return 0.05 + t * 0.13;
-  }
-  // night 0.25..0.45
-  const dist = hh >= 18 ? hh - 18 : hh + 6; // 0..11
-  const t = clamp(dist / 11, 0, 1);
-  return 0.28 + t * 0.17;
-}
-
-function drawKitchenClock(ctx: CanvasRenderingContext2D, ms: number) {
+function drawKitchenClock(ctx: CanvasRenderingContext2D) {
   const { hh, mm } = wibNowParts();
   const text = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")} WIB`;
-  // place on kitchen wall
   const x = 24 * TILE + 8;
   const y = 2 * TILE + 8;
   ctx.save();
-  ctx.globalAlpha = 0.9;
+  ctx.globalAlpha = 0.92;
   ctx.fillStyle = "rgba(0,0,0,0.55)";
   ctx.fillRect(x - 18, y - 8, 36, 14);
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
   ctx.strokeRect(x - 18.5, y - 8.5, 37, 15);
   ctx.font = "7px ui-monospace, SFMono-Regular, Menlo, Monaco";
   ctx.textAlign = "center";
@@ -842,98 +722,211 @@ function drawKitchenClock(ctx: CanvasRenderingContext2D, ms: number) {
   ctx.restore();
 }
 
-function drawMonitorsAndMugs(ctx: CanvasRenderingContext2D, ms: number, live: LiveAgent[]) {
-  // monitor rectangles anchored near desks; glow when active/busy
-  type Mon = { key: RosterKey; x: number; y: number; w: number; h: number; dual?: boolean };
-  const mons: Mon[] = [
-    { key: "yuri", x: 4 * TILE + 6, y: 4 * TILE + 3, w: 10, h: 6, dual: true },
-    { key: "glass", x: 3 * TILE + 6, y: 12 * TILE + 3, w: 10, h: 6 },
-    { key: "epstein", x: 8 * TILE + 6, y: 12 * TILE + 3, w: 10, h: 6 },
-    { key: "jarvis", x: 3 * TILE + 6, y: 16 * TILE + 3, w: 10, h: 6 },
-    { key: "friday", x: 8 * TILE + 6, y: 16 * TILE + 3, w: 10, h: 6 },
-  ];
+type Sprites = {
+  floorWood: Sprite;
+  floorBeige: Sprite;
+  floorCarpet: Sprite;
+  wall: Sprite;
+  desk: Sprite;
+  bookshelf: Sprite;
+  plant: Sprite;
+  vending: Sprite;
+  couch: Sprite;
+  cooler: Sprite;
+  monitor: Sprite;
+};
 
+function buildSprites(): Sprites {
+  return {
+    floorWood: tilePatternSprite(PALETTE.woodA, PALETTE.woodB, "#b8922e"),
+    floorBeige: tilePatternSprite(PALETTE.beigeA, PALETTE.beigeB, "#e8ddc3"),
+    floorCarpet: tilePatternSprite(PALETTE.carpetA, PALETTE.carpetB, "#5aa3b7"),
+    wall: wallTileSprite(),
+    desk: deskSprite(),
+    bookshelf: bookshelfSprite(),
+    plant: plantSprite(),
+    vending: vendingSprite(),
+    couch: couchSprite(),
+    cooler: coolerSprite(),
+    monitor: monitorSprite(),
+  };
+}
+
+function drawWorld(
+  ctx: CanvasRenderingContext2D,
+  sprites: Sprites,
+  floor: FloorKind[][],
+  props: Prop[],
+  live: LiveAgent[],
+  ms: number
+) {
+  // floors
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const kind = floor[r][c];
+      const spr = kind === "wood" ? sprites.floorWood : kind === "beige" ? sprites.floorBeige : sprites.floorCarpet;
+      ctx.drawImage(spr.canvas, 0, 0, 16, 16, c * TILE, r * TILE, 16, 16);
+    }
+  }
+
+  // walls
+  const wall = (tx: number, ty: number) => {
+    ctx.drawImage(sprites.wall.canvas, 0, 0, 16, 16, tx * TILE, ty * TILE, 16, 16);
+  };
+  for (let x = 0; x < COLS; x++) {
+    wall(x, 0);
+    wall(x, ROWS - 1);
+  }
+  for (let y = 0; y < ROWS; y++) {
+    wall(0, y);
+    wall(COLS - 1, y);
+  }
+  for (let y = 0; y < ROWS; y++) {
+    if (y === DOOR_MAIN_RIGHT.ty) continue;
+    wall(SPLIT_X, y);
+  }
+  for (let x = SPLIT_X; x < COLS; x++) {
+    if (x === DOOR_KITCHEN_LOUNGE.tx) continue;
+    wall(x, SPLIT_Y);
+  }
+  for (let x = 0; x < SPLIT_X; x++) {
+    if (x === DOOR_BOSS.tx) continue;
+    wall(x, BOSS_WALL_Y);
+  }
+  // boss room enclosure
+  for (let y = 1; y < BOSS_WALL_Y; y++) {
+    wall(1, y);
+    wall(SPLIT_X - 1, y);
+  }
+  for (let x = 1; x < SPLIT_X - 1; x++) wall(x, 1);
+
+  // props (big first)
+  const drawAt = (spr: Sprite, tx: number, ty: number) => {
+    ctx.drawImage(spr.canvas, tx * TILE, ty * TILE);
+  };
+
+  for (const pr of props) {
+    if (pr.kind === "desk") drawAt(sprites.desk, pr.tx, pr.ty);
+    if (pr.kind === "bookshelf") drawAt(sprites.bookshelf, pr.tx, pr.ty);
+    if (pr.kind === "vending") drawAt(sprites.vending, pr.tx, pr.ty);
+    if (pr.kind === "couch") drawAt(sprites.couch, pr.tx, pr.ty);
+    if (pr.kind === "cooler") drawAt(sprites.cooler, pr.tx, pr.ty);
+  }
+  for (const pr of props) {
+    if (pr.kind === "plant") drawAt(sprites.plant, pr.tx, pr.ty);
+  }
+
+  // monitors (glow when active/busy)
   const liveBy = new Map(live.map((a) => [a.key, a] as const));
-
-  for (const m of mons) {
-    const a = liveBy.get(m.key);
+  for (const pr of props) {
+    if (pr.kind !== "desk" || !pr.owner) continue;
+    const a = liveBy.get(pr.owner);
     const on = a && (a.status === "active" || a.status === "busy");
 
-    // screen
-    ctx.save();
+    // place on top of desk
+    const px = pr.tx * TILE + 8;
+    const py = pr.ty * TILE + 6;
+
     if (on) {
-      // glow
+      ctx.save();
       ctx.globalAlpha = 0.22;
       ctx.fillStyle = "rgba(56,189,248,1)";
-      ctx.fillRect(m.x - 3, m.y - 3, m.w + 6, m.h + 6);
-      ctx.globalAlpha = 1;
+      ctx.fillRect(px - 3, py - 3, 18, 14);
+      ctx.restore();
     }
 
-    ctx.fillStyle = on ? "rgba(15,23,42,0.92)" : "rgba(2,6,23,0.75)";
-    ctx.fillRect(m.x, m.y, m.w, m.h);
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
-    ctx.strokeRect(m.x + 0.5, m.y + 0.5, m.w - 1, m.h - 1);
+    ctx.drawImage(sprites.monitor.canvas, px, py);
 
-    // scrolling code lines when on
     if (on) {
-      const t = (ms / 1000) * (a!.status === "busy" ? 2.0 : 1.1);
+      // tiny scrolling code
+      const t = (ms / 1000) * (a.status === "busy" ? 2.0 : 1.0);
       const off = Math.floor(t * 6) % 12;
-      for (let i = 0; i < 7; i++) {
-        const yy = m.y + 1 + i;
-        const w = 2 + ((i * 11 + off + m.key.length) % (m.w - 3));
-        ctx.fillStyle = i % 3 === 0 ? "rgba(34,197,94,0.75)" : "rgba(226,232,240,0.7)";
-        ctx.fillRect(m.x + 1, yy, w, 1);
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      for (let i = 0; i < 5; i++) {
+        const yy = py + 2 + i;
+        const w = 2 + ((i * 7 + off) % 8);
+        ctx.fillStyle = i % 2 ? "rgba(226,232,240,0.75)" : "rgba(34,197,94,0.75)";
+        ctx.fillRect(px + 2, yy, w, 1);
       }
+      ctx.restore();
     }
-
-    // dual monitor for Yuri
-    if (m.dual) {
-      const dx = m.w + 4;
-      ctx.fillStyle = on ? "rgba(15,23,42,0.92)" : "rgba(2,6,23,0.75)";
-      ctx.fillRect(m.x + dx, m.y, m.w, m.h);
-      ctx.strokeStyle = "rgba(255,255,255,0.18)";
-      ctx.strokeRect(m.x + dx + 0.5, m.y + 0.5, m.w - 1, m.h - 1);
-      if (on) {
-        const t = (ms / 1000) * (a!.status === "busy" ? 2.2 : 1.2);
-        const off = Math.floor(t * 7) % 12;
-        for (let i = 0; i < 7; i++) {
-          const yy = m.y + 1 + i;
-          const w = 2 + ((i * 13 + off + 3) % (m.w - 3));
-          ctx.fillStyle = i % 3 === 1 ? "rgba(251,146,60,0.75)" : "rgba(226,232,240,0.7)";
-          ctx.fillRect(m.x + dx + 1, yy, w, 1);
-        }
-      }
-    }
-
-    ctx.restore();
-
-    // coffee mug near each desk (tiny)
-    const mugX = m.x + m.w - 2;
-    const mugY = m.y + m.h + 6;
-    ctx.fillStyle = "rgba(0,0,0,0.5)";
-    ctx.fillRect(mugX - 1, mugY - 1, 4, 4);
-    ctx.fillStyle = "rgba(248,250,252,0.85)";
-    ctx.fillRect(mugX, mugY, 3, 3);
-    ctx.fillStyle = "rgba(15,23,42,0.65)";
-    ctx.fillRect(mugX + 1, mugY + 1, 1, 1);
   }
+
+  // subtle labels
+  ctx.font = "8px ui-sans-serif, system-ui";
+  ctx.fillStyle = "rgba(255,255,255,0.22)";
+  ctx.fillText("OFFICE", 2 * TILE, 11 * TILE + 2);
+  ctx.fillText("KITCHEN", 17 * TILE, 2 * TILE + 2);
+  ctx.fillText("LOUNGE", 18 * TILE, 12 * TILE + 2);
+  ctx.fillText("BOSS", 3 * TILE, 2 * TILE + 2);
+}
+
+function drawCharacter(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  rt: CharacterRuntime,
+  status: AgentStatus,
+  label: string,
+  selected: boolean
+) {
+  const FRAME_W = 16;
+  const FRAME_H = 24;
+
+  let col = 4; // idle
+  if (rt.anim === "work" && (status === "active" || status === "busy")) {
+    col = rt.typingFrame; // 5/6
+  } else if (rt.anim === "walk") {
+    col = rt.walkFrame;
+  }
+
+  const row = dirRowIndex(rt.dir);
+  const sx = col * FRAME_W;
+  const sy = row * FRAME_H;
+
+  const dx = Math.round(rt.x - FRAME_W / 2);
+  const dy = Math.round(rt.y - FRAME_H);
+
+  // shadow
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.beginPath();
+  ctx.ellipse(rt.x, rt.y - 4, 7, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (selected) {
+    ctx.fillStyle = "rgba(56,189,248,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(rt.x, rt.y - 4, 11, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.drawImage(img, sx, sy, FRAME_W, FRAME_H, dx, dy, FRAME_W, FRAME_H);
+
+  drawLabel(ctx, rt.x, dy - 2, label, selected ? "#38bdf8" : "rgba(255,255,255,0.9)", statusColor(status));
+}
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.src = src;
+    img.onload = () => resolve(img);
+    img.onerror = (e) => reject(e);
+  });
 }
 
 export default function OfficePage() {
   const agents = useQuery(api.agents.getAll, {});
   const running = useQuery(api.agentRuns.getRecent, { status: "running", limit: 100 });
 
-  const live = useMemo(() => {
+  const live: LiveAgent[] = useMemo(() => {
     return ROSTER.map((r): LiveAgent => {
       const agent = pickAgentFromList(agents as any, r.key, r.label);
       const status: AgentStatus = (agent?.status as AgentStatus) ?? "offline";
-
       const run = (running ?? []).find((x: any) => {
         const id = String(x.agentId ?? "").toLowerCase();
         const nm = String(x.agentName ?? "").toLowerCase();
         return id === r.key || nm === r.label.toLowerCase();
       });
-
       return { key: r.key, label: r.label, status, task: (run?.task as string | undefined) ?? agent?.currentTask };
     });
   }, [agents, running]);
@@ -941,128 +934,82 @@ export default function OfficePage() {
   const [selected, setSelected] = useState<RosterKey>("friday");
   const selectedLive = live.find((a) => a.key === selected);
 
-  const [muted, setMuted] = useState(true);
-  const audioRef = useRef<AudioEngine | null>(null);
-  const prevRunningByAgentRef = useRef<Record<string, boolean>>({});
-
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const sheetsRef = useRef<SpriteSheets>({});
 
-  const tilemap = useMemo(() => buildTilemap(), []);
+  const spritesRef = useRef<Sprites | null>(null);
+  const charImgsRef = useRef<Record<RosterKey, HTMLImageElement> | null>(null);
+
+  const floor = useMemo(() => buildFloor(), []);
   const props = useMemo(() => buildProps(), []);
   const blocked = useMemo(() => buildBlocked(props), [props]);
 
   const runtimeRef = useRef<Record<RosterKey, CharacterRuntime>>({} as any);
-  const rafRef = useRef<number>(0);
-  const lastTickMsRef = useRef<number>(0);
-  const lastFrameMsRef = useRef<number>(0);
+  const prevRunningRef = useRef<Record<RosterKey, boolean>>({} as any);
 
-  // init + load sprites
+  const rafRef = useRef<number>(0);
+  const lastTickRef = useRef(0);
+  const lastFrameRef = useRef(0);
+
+  // Init sprites + character sheets
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [officeImg, charactersImg] = await Promise.all([loadImage("/sprites/office.png"), loadImage("/sprites/characters.png")]);
+      // sprites are generated in code
+      const sprites = buildSprites();
+
+      const imgs = await Promise.all([
+        loadImage("/char_0.png"),
+        loadImage("/char_1.png"),
+        loadImage("/char_2.png"),
+        loadImage("/char_3.png"),
+        loadImage("/char_4.png"),
+      ]);
+
       if (cancelled) return;
-      sheetsRef.current = { office: officeImg, characters: charactersImg };
+      spritesRef.current = sprites;
+      charImgsRef.current = {
+        yuri: imgs[0],
+        jarvis: imgs[1],
+        friday: imgs[2],
+        glass: imgs[3],
+        epstein: imgs[4],
+      };
     })().catch(() => {
       // ignore
     });
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // audio: create only after unmute
-  useEffect(() => {
-    if (muted) {
-      const eng = audioRef.current;
-      if (eng) eng.ambient.gain.gain.setTargetAtTime(0.0, eng.ctx.currentTime, 0.05);
-      return;
-    }
-    const eng = ensureAudioEngine(audioRef);
-    if (eng.ctx.state === "suspended") eng.ctx.resume().catch(() => {});
-    eng.ambient.gain.gain.setTargetAtTime(0.12, eng.ctx.currentTime, 0.08);
-  }, [muted]);
-
-  // init character runtimes at their seat (Yuri) / near main office door
+  // init runtimes at their seats
   useEffect(() => {
     for (const r of ROSTER) {
       if (runtimeRef.current[r.key]) continue;
       const seat = SEATS[r.key];
+      const p = tileCenter(seat.tx, seat.ty);
       runtimeRef.current[r.key] = {
-        x: seat.x,
-        y: seat.y,
+        x: p.x,
+        y: p.y,
         dir: seat.face,
-        mode: r.key === "yuri" ? "work" : "idle",
+        anim: r.key === "yuri" ? "work" : "idle",
         path: [],
-        targetX: seat.x,
-        targetY: seat.y,
+        target: { x: p.x, y: p.y },
         nextDecisionMs: 0,
+        goingToSeat: false,
         walkFrame: 0,
         walkAcc: 0,
-        typingFrame: 0,
+        typingFrame: 5,
         typingAcc: 0,
-        returnToDesk: false,
         sparkleUntilMs: 0,
-        lastStepMs: 0,
-        lastTypeMs: 0,
       };
+      prevRunningRef.current[r.key] = false;
     }
   }, []);
 
-  // observe running agent runs for spawn/complete transitions
-  useEffect(() => {
-    const runSet = new Set<string>();
-    for (const r of running ?? []) {
-      const id = String((r as any).agentId ?? "").toLowerCase();
-      const nm = String((r as any).agentName ?? "").toLowerCase();
-      for (const rr of ROSTER) {
-        if (id === rr.key || nm === rr.label.toLowerCase()) runSet.add(rr.key);
-      }
-    }
-
-    for (const rr of ROSTER) {
-      if (rr.key === "yuri") continue;
-      const prev = !!prevRunningByAgentRef.current[rr.key];
-      const now = runSet.has(rr.key);
-
-      if (!prev && now) {
-        // spawn at Yuri door with sparkle, then path to own desk
-        const rt = runtimeRef.current[rr.key];
-        if (rt) {
-          rt.x = YURI_DOOR_POS.x;
-          rt.y = YURI_DOOR_POS.y;
-          rt.mode = "spawn";
-          rt.sparkleUntilMs = performance.now() + 520;
-          rt.path = [];
-        }
-        playSpawn(audioRef, muted);
-      }
-
-      if (prev && !now) {
-        // completion ding; agent walks back to desk and sits
-        const rt = runtimeRef.current[rr.key];
-        if (rt) {
-          const ws = SEATS[rr.key as keyof typeof SEATS];
-          if (ws) {
-            const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: ws.x, y: ws.y });
-            rt.path = path;
-            rt.mode = "walk";
-            rt.returnToDesk = true;
-          } else {
-            rt.mode = "idle";
-          }
-          rt.nextDecisionMs = 0;
-        }
-        playComplete(audioRef, muted);
-      }
-
-      prevRunningByAgentRef.current[rr.key] = now;
-    }
-  }, [running, muted]);
-
-  // resize backing store (internal resolution), scale with CSS
+  // resize CSS size (internal canvas is fixed)
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -1073,10 +1020,8 @@ export default function OfficePage() {
       canvas.width = INTERNAL_W;
       canvas.height = INTERNAL_H;
       const scale = Math.floor(Math.min(rect.width / INTERNAL_W, rect.height / INTERNAL_H) * 1000) / 1000;
-      const w = Math.max(1, INTERNAL_W * scale);
-      const h = Math.max(1, INTERNAL_H * scale);
-      canvas.style.width = `${w}px`;
-      canvas.style.height = `${h}px`;
+      canvas.style.width = `${Math.max(1, INTERNAL_W * scale)}px`;
+      canvas.style.height = `${Math.max(1, INTERNAL_H * scale)}px`;
     };
 
     resize();
@@ -1085,287 +1030,7 @@ export default function OfficePage() {
     return () => ro.disconnect();
   }, []);
 
-  // main loop (capped)
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d", { alpha: true })!;
-    ctx.imageSmoothingEnabled = false;
-
-    const tick = (ms: number) => {
-      rafRef.current = requestAnimationFrame(tick);
-      if (ms - (lastFrameMsRef.current || 0) < FRAME_MS) return;
-
-      const last = lastTickMsRef.current || ms;
-      const dt = clamp((ms - last) / 1000, 0, 0.08);
-      lastTickMsRef.current = ms;
-      lastFrameMsRef.current = ms;
-
-      const { office, characters } = sheetsRef.current;
-      ctx.clearRect(0, 0, INTERNAL_W, INTERNAL_H);
-
-      if (!office || !characters) {
-        ctx.fillStyle = "#0b1020";
-        ctx.fillRect(0, 0, INTERNAL_W, INTERNAL_H);
-        ctx.fillStyle = "#e2e8f0";
-        ctx.font = "12px ui-sans-serif, system-ui";
-        ctx.fillText("Loading sprites…", 12, 20);
-        return;
-      }
-
-      const now = ms;
-
-      // Update logic
-      const runningSet = new Set<string>();
-      for (const r of running ?? []) {
-        const id = String((r as any).agentId ?? "").toLowerCase();
-        const nm = String((r as any).agentName ?? "").toLowerCase();
-        for (const rr of ROSTER) {
-          if (id === rr.key || nm === rr.label.toLowerCase()) runningSet.add(rr.key);
-        }
-      }
-
-      for (const a of live) {
-        const rt = runtimeRef.current[a.key];
-        if (!rt) continue;
-
-        // Offline: not shown, but keep them parked at desk for when they come back.
-        if (a.status === "offline" && a.key !== "yuri") {
-          rt.mode = "idle";
-          continue;
-        }
-
-        const isWorking = a.key === "yuri" ? true : runningSet.has(a.key) || a.status === "active" || a.status === "busy";
-        // Yuri works at his desk, spawned agents work at collab desk in Yuri's office
-        const workSeat = a.key === "yuri" ? SEATS.yuri : (isWorking ? YURI_OFFICE_COLLAB_SEAT : SEATS[a.key]);
-
-        // Decide next target + path
-        if (isWorking) {
-          const distToSeat = Math.hypot(workSeat.x - rt.x, workSeat.y - rt.y);
-          if (distToSeat < 3) {
-            // Already at desk — sit and work
-            rt.mode = "work";
-            rt.x = workSeat.x;
-            rt.y = workSeat.y;
-            rt.targetX = workSeat.x;
-            rt.targetY = workSeat.y;
-            rt.path = [];
-            rt.dir = workSeat.face;
-          } else {
-            // Teleport to work seat with sparkle
-            rt.x = workSeat.x;
-            rt.y = workSeat.y;
-            rt.targetX = workSeat.x;
-            rt.targetY = workSeat.y;
-            rt.path = [];
-            rt.mode = "work";
-            rt.dir = workSeat.face;
-            if (rt.sparkleUntilMs < now) {
-              rt.sparkleUntilMs = now + 400;
-            }
-          }
-        } else {
-          // idle behaviors
-          if (rt.mode === "spawn") {
-            // after sparkle, path to own desk
-            if (now > rt.sparkleUntilMs) {
-              const ws = SEATS[a.key as keyof typeof SEATS];
-              if (ws) {
-                const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: ws.x, y: ws.y });
-                rt.path = path;
-                rt.mode = "walk";
-                rt.returnToDesk = true;
-              } else {
-                rt.mode = "idle";
-              }
-            }
-          }
-
-          const nearTarget = Math.hypot(rt.targetX - rt.x, rt.targetY - rt.y) < 2.0;
-          // sitting at desk — stay until next decision time, then maybe wander
-          if (rt.mode === "sitting") {
-            if (rt.nextDecisionMs === 0) rt.nextDecisionMs = now + randBetween(5000, 12000);
-            if (now >= rt.nextDecisionMs) {
-              rt.mode = "idle";
-              rt.nextDecisionMs = 0;
-            }
-          }
-
-          // If idle near a door, immediately go to desk
-          if (rt.mode === "idle" && isNearDoor(rt.x, rt.y)) {
-            const ws = SEATS[a.key as keyof typeof SEATS];
-            if (ws) {
-              const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: ws.x, y: ws.y });
-              rt.path = path;
-              rt.mode = "walk";
-              rt.returnToDesk = true;
-            }
-          }
-
-          if (rt.mode === "idle" && (rt.nextDecisionMs === 0 || now >= rt.nextDecisionMs) && nearTarget) {
-            // 70% chance to go back to desk and sit, 30% wander
-            if (Math.random() < 0.7) {
-              const ws = SEATS[a.key as keyof typeof SEATS];
-              if (ws) {
-                const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: ws.x, y: ws.y });
-                rt.path = path;
-                rt.mode = "walk";
-                rt.returnToDesk = true;
-                rt.nextDecisionMs = now + randBetween(3000, 7000);
-              }
-            } else {
-            // pick an idle destination: bias kitchen/lounges and sometimes report to Yuri's door
-            const biasBoss = a.key !== "yuri" && Math.random() < 0.18;
-            const pick = biasBoss
-              ? { tx: YURI_DOOR_TILE.tx - 2, ty: YURI_DOOR_TILE.ty + 2 }
-              : IDLE_DEST_TILES[Math.floor(Math.random() * IDLE_DEST_TILES.length)];
-
-            const destPx = tileCenterPx(pick.tx, pick.ty);
-            const path = aStar(blocked, { x: rt.x, y: rt.y }, destPx);
-            rt.path = path;
-            rt.mode = "walk";
-            rt.nextDecisionMs = now + randBetween(2500, 5200);
-            }
-          }
-
-          }
-
-        // === Walk/movement logic (runs for BOTH working and idle agents) ===
-        if (rt.mode === "walk" || rt.mode === "spawn") {
-          if (!rt.path.length) {
-            rt.mode = "idle";
-          } else {
-            const next = rt.path[0];
-            rt.targetX = next.cx;
-            rt.targetY = next.cy;
-            const dx = rt.targetX - rt.x;
-            const dy = rt.targetY - rt.y;
-            const dist = Math.hypot(dx, dy);
-
-            const speed = 22;
-            if (dist > 0.001) {
-              const step = Math.min(dist, speed * dt);
-              rt.x += (dx / dist) * step;
-              rt.y += (dy / dist) * step;
-              rt.dir = dirFromDelta(dx, dy);
-            }
-
-            if (dist < 1.2) rt.path.shift();
-            if (!rt.path.length) {
-              if (isNearDoor(rt.x, rt.y)) {
-                const ws = SEATS[a.key as keyof typeof SEATS];
-                if (ws) {
-                  const path = aStar(blocked, { x: rt.x, y: rt.y }, { x: ws.x, y: ws.y });
-                  rt.path = path;
-                  rt.returnToDesk = true;
-                }
-              } else if (rt.returnToDesk) {
-                rt.mode = "sitting";
-                rt.returnToDesk = false;
-              } else {
-                rt.mode = "idle";
-              }
-            }
-          }
-        }
-
-        // keep inside
-        rt.x = clamp(rt.x, 8, INTERNAL_W - 8);
-        rt.y = clamp(rt.y, 24, INTERNAL_H - 8);
-
-        // Animation + sounds
-        const moving = rt.mode === "walk" || rt.mode === "spawn";
-        if (moving) {
-          rt.walkAcc += dt;
-          if (rt.walkAcc >= 0.15) {
-            rt.walkAcc = 0;
-            rt.walkFrame = (((rt.walkFrame + 1) % 4) as 0 | 1 | 2 | 3);
-
-            if (rt.walkFrame % 2 === 0 && now - rt.lastStepMs > 120) {
-              playFootstep(audioRef, muted);
-              rt.lastStepMs = now;
-            }
-          }
-        } else {
-          rt.walkFrame = 0;
-          rt.walkAcc = 0;
-        }
-
-        if (rt.mode === "work" || rt.mode === "sitting") {
-          if (rt.mode === "work") {
-            const busy = a.status === "busy";
-            const cadence = busy ? 0.085 : 0.12;
-            rt.typingAcc += dt;
-            if (rt.typingAcc >= cadence) {
-              rt.typingAcc = 0;
-              rt.typingFrame = rt.typingFrame === 0 ? 1 : 0;
-              if (now - rt.lastTypeMs > 60 && Math.random() < 0.9) {
-                playTyping(audioRef, muted, busy ? 0.85 : 0.6);
-                rt.lastTypeMs = now;
-              }
-            }
-          } else {
-            // sitting — no typing, just seated still
-            rt.typingFrame = 0;
-            rt.typingAcc = 0;
-          }
-        } else {
-          rt.typingAcc = 0;
-          rt.typingFrame = 0;
-        }
-      }
-
-      // Render
-      drawOffice(ctx, office, tilemap, props);
-
-      // Details layer: clock + monitors + mugs
-      drawKitchenClock(ctx, now);
-      drawMonitorsAndMugs(ctx, now, live);
-
-      // Characters (by y)
-      const toDraw = live
-        .filter((a) => a.status !== "offline" || a.key === "yuri")
-        .map((a) => ({ a, rt: runtimeRef.current[a.key] }))
-        .filter((x) => !!x.rt)
-        .sort((l, r) => l.rt!.y - r.rt!.y);
-
-      for (const { a, rt } of toDraw) {
-        if (a.status === "offline" && a.key !== "yuri") continue;
-        drawCharacter(ctx, characters, ROSTER.find((x) => x.key === a.key)!.characterIndex, rt!, a.status, a.label, a.key === selected);
-      }
-
-      // Spawn sparkle
-      for (const a of live) {
-        const rt = runtimeRef.current[a.key];
-        if (!rt) continue;
-        if (rt.sparkleUntilMs > now) {
-          const t01 = clamp(1 - (rt.sparkleUntilMs - now) / 520, 0, 1);
-          drawSparkle(ctx, rt.x, rt.y - 16, t01);
-          drawSparkle(ctx, rt.x + 6, rt.y - 10, clamp(t01 + 0.12, 0, 1));
-        }
-      }
-
-      // Day/night tint (WIB)
-      const { hh } = wibNowParts();
-      const alpha = dayNightOverlayAlpha(hh);
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = hh >= 6 && hh <= 17 ? "rgba(2,6,23,1)" : "rgba(2,6,23,1)";
-      ctx.fillRect(0, 0, INTERNAL_W, INTERNAL_H);
-      // slight blue moonlight at night
-      if (hh < 6 || hh > 17) {
-        ctx.globalAlpha = alpha * 0.55;
-        ctx.fillStyle = "rgba(56,189,248,1)";
-        ctx.fillRect(0, 0, INTERNAL_W, INTERNAL_H);
-      }
-      ctx.restore();
-    };
-
-    rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [blocked, live, muted, props, running, selected, tilemap]);
-
-  // click hit-testing
+  // click hit test selection
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1377,13 +1042,13 @@ export default function OfficePage() {
       const px = (ev.clientX - rect.left) * sx;
       const py = (ev.clientY - rect.top) * sy;
 
-      const liveSorted = [...live]
+      const ordered = [...live]
         .filter((a) => a.status !== "offline" || a.key === "yuri")
         .map((a) => ({ a, rt: runtimeRef.current[a.key] }))
         .filter((x) => !!x.rt)
         .sort((l, r) => r.rt!.y - l.rt!.y);
 
-      for (const { a, rt } of liveSorted) {
+      for (const { a, rt } of ordered) {
         if (rt && isPointInCharacter(px, py, rt)) {
           setSelected(a.key);
           return;
@@ -1395,34 +1060,291 @@ export default function OfficePage() {
     return () => canvas.removeEventListener("click", onClick);
   }, [live]);
 
+  // main loop
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d", { alpha: true })!;
+    ctx.imageSmoothingEnabled = false;
+
+    const tick = (ms: number) => {
+      rafRef.current = requestAnimationFrame(tick);
+      if (ms - (lastFrameRef.current || 0) < FRAME_MS) return;
+
+      const last = lastTickRef.current || ms;
+      const dt = clamp((ms - last) / 1000, 0, 0.08);
+      lastTickRef.current = ms;
+      lastFrameRef.current = ms;
+
+      ctx.clearRect(0, 0, INTERNAL_W, INTERNAL_H);
+
+      const sprites = spritesRef.current;
+      const charImgs = charImgsRef.current;
+      if (!sprites || !charImgs) {
+        ctx.fillStyle = PALETTE.ink;
+        ctx.fillRect(0, 0, INTERNAL_W, INTERNAL_H);
+        ctx.fillStyle = PALETTE.uiText;
+        ctx.font = "12px ui-sans-serif, system-ui";
+        ctx.fillText("Loading pixel office…", 12, 20);
+        return;
+      }
+
+      // running set
+      const runningSet = new Set<RosterKey>();
+      for (const r of running ?? []) {
+        const id = String((r as any).agentId ?? "").toLowerCase();
+        const nm = String((r as any).agentName ?? "").toLowerCase();
+        for (const rr of ROSTER) {
+          if (id === rr.key || nm === rr.label.toLowerCase()) runningSet.add(rr.key);
+        }
+      }
+
+      // detect transitions (spawn sparkle + reposition near boss door)
+      const bossDoorPx = tileCenter(DOOR_BOSS.tx, DOOR_BOSS.ty);
+      for (const rr of ROSTER) {
+        if (rr.key === "yuri") continue;
+        const prev = !!prevRunningRef.current[rr.key];
+        const now = runningSet.has(rr.key);
+        if (!prev && now) {
+          const rt = runtimeRef.current[rr.key];
+          if (rt) {
+            rt.x = bossDoorPx.x;
+            rt.y = bossDoorPx.y;
+            rt.sparkleUntilMs = ms + 520;
+            rt.path = [];
+            rt.target = { x: rt.x, y: rt.y };
+            rt.anim = "idle";
+            rt.goingToSeat = true;
+            rt.nextDecisionMs = 0;
+          }
+        }
+        prevRunningRef.current[rr.key] = now;
+      }
+
+      // update logic
+      for (const a of live) {
+        const rt = runtimeRef.current[a.key];
+        if (!rt) continue;
+
+        // offline agents are hidden, but keep their runtime at seat for instant return.
+        if (a.status === "offline" && a.key !== "yuri") {
+          const seat = SEATS[a.key];
+          const p = tileCenter(seat.tx, seat.ty);
+          rt.x = p.x;
+          rt.y = p.y;
+          rt.dir = seat.face;
+          rt.anim = "idle";
+          rt.path = [];
+          rt.target = { x: p.x, y: p.y };
+          rt.nextDecisionMs = 0;
+          rt.goingToSeat = false;
+          continue;
+        }
+
+        const wantsWork = a.key === "yuri" || runningSet.has(a.key) || a.status === "active" || a.status === "busy";
+
+        // target selection (do not let agents choose a rest point near doors)
+        if (wantsWork) {
+          const seat = SEATS[a.key];
+          const dest = tileCenter(seat.tx, seat.ty);
+          const dist = Math.hypot(dest.x - rt.x, dest.y - rt.y);
+
+          if (dist < 2.5) {
+            // snap to seat
+            rt.x = dest.x;
+            rt.y = dest.y;
+            rt.dir = seat.face;
+            rt.anim = "work";
+            rt.path = [];
+            rt.target = dest;
+          } else {
+            // walk to seat
+            if (rt.path.length === 0) {
+              rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
+            }
+            rt.goingToSeat = true;
+            rt.anim = rt.path.length ? "walk" : "idle";
+          }
+        } else {
+          // idle: if we reached a seat, sometimes sit (idle anim but face desk), or wander.
+          const nearTarget = Math.hypot(rt.target.x - rt.x, rt.target.y - rt.y) < 2.0;
+
+          // never idle near doorways
+          if (nearTarget && isNearDoor(rt.x, rt.y)) {
+            const seat = SEATS[a.key];
+            const dest = tileCenter(seat.tx, seat.ty);
+            rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
+            rt.goingToSeat = true;
+            rt.anim = "walk";
+          }
+
+          if (rt.path.length === 0 && (rt.nextDecisionMs === 0 || ms >= rt.nextDecisionMs) && nearTarget) {
+            const goSeat = Math.random() < 0.55;
+            if (goSeat) {
+              const seat = SEATS[a.key];
+              const dest = tileCenter(seat.tx, seat.ty);
+              rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
+              rt.goingToSeat = true;
+              rt.anim = rt.path.length ? "walk" : "idle";
+              rt.nextDecisionMs = ms + randBetween(3500, 7000);
+            } else {
+              // wander spots (avoid door tiles)
+              const candidates: Array<{ tx: number; ty: number }> = [
+                { tx: 12, ty: 16 },
+                { tx: 3, ty: 13 },
+                { tx: 8, ty: 15 },
+                { tx: 19, ty: 3 },
+                { tx: 26, ty: 3 },
+                { tx: 22, ty: 16 },
+                { tx: 27, ty: 15 },
+                { tx: DOOR_BOSS.tx - 2, ty: DOOR_BOSS.ty + 2 },
+              ];
+              // pick until not near door
+              let pick = candidates[Math.floor(Math.random() * candidates.length)];
+              for (let i = 0; i < 6; i++) {
+                const p = tileCenter(pick.tx, pick.ty);
+                if (!isNearDoor(p.x, p.y)) break;
+                pick = candidates[Math.floor(Math.random() * candidates.length)];
+              }
+              const dest = tileCenter(pick.tx, pick.ty);
+              rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
+              rt.goingToSeat = false;
+              rt.anim = rt.path.length ? "walk" : "idle";
+              rt.nextDecisionMs = ms + randBetween(2500, 5200);
+            }
+          }
+
+          // if at own seat and not moving, face down (desk)
+          if (rt.path.length === 0 && !wantsWork) {
+            rt.anim = "idle";
+          }
+        }
+
+        // === Walk movement (runs regardless of work/idle state; only depends on having a path) ===
+        if (rt.path.length) {
+          const next = rt.path[0];
+          const c = tileCenter(next.tx, next.ty);
+          rt.target = c;
+
+          const dx = c.x - rt.x;
+          const dy = c.y - rt.y;
+          const dist = Math.hypot(dx, dy);
+          const speed = 22; // px/sec
+
+          if (dist > 0.001) {
+            const step = Math.min(dist, speed * dt);
+            rt.x += (dx / dist) * step;
+            rt.y += (dy / dist) * step;
+            rt.dir = dirFromDelta(dx, dy);
+          }
+
+          if (dist < 1.2) rt.path.shift();
+          rt.anim = rt.path.length ? "walk" : rt.anim;
+
+          if (!rt.path.length) {
+            // arrived
+            if (isNearDoor(rt.x, rt.y)) {
+              // shove away from doors: go to seat
+              const seat = SEATS[a.key];
+              const dest = tileCenter(seat.tx, seat.ty);
+              rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
+              rt.goingToSeat = true;
+            } else if (rt.goingToSeat) {
+              // sit/idle at seat for a bit
+              rt.anim = "idle";
+              rt.nextDecisionMs = ms + randBetween(5500, 12000);
+              rt.goingToSeat = false;
+            } else {
+              rt.anim = "idle";
+            }
+          }
+        }
+
+        // keep in bounds
+        rt.x = clamp(rt.x, 8, INTERNAL_W - 8);
+        rt.y = clamp(rt.y, 24, INTERNAL_H - 8);
+
+        // anim clocks
+        if (rt.anim === "walk") {
+          rt.walkAcc += dt;
+          if (rt.walkAcc >= 0.14) {
+            rt.walkAcc = 0;
+            rt.walkFrame = (((rt.walkFrame + 1) % 4) as 0 | 1 | 2 | 3);
+          }
+        } else {
+          rt.walkFrame = 0;
+          rt.walkAcc = 0;
+        }
+
+        if (rt.anim === "work") {
+          const cadence = a.status === "busy" ? 0.08 : 0.12;
+          rt.typingAcc += dt;
+          if (rt.typingAcc >= cadence) {
+            rt.typingAcc = 0;
+            rt.typingFrame = rt.typingFrame === 5 ? 6 : 5;
+          }
+        } else {
+          rt.typingAcc = 0;
+          rt.typingFrame = 5;
+        }
+      }
+
+      // draw world
+      drawWorld(ctx, sprites, floor, props, live, ms);
+      drawKitchenClock(ctx);
+
+      // draw characters by y
+      const drawList = live
+        .filter((a) => a.status !== "offline" || a.key === "yuri")
+        .map((a) => ({ a, rt: runtimeRef.current[a.key] }))
+        .filter((x) => !!x.rt)
+        .sort((l, r) => l.rt!.y - r.rt!.y);
+
+      for (const { a, rt } of drawList) {
+        if (a.status === "offline" && a.key !== "yuri") continue;
+        drawCharacter(ctx, charImgs[a.key], rt!, a.status, a.label, a.key === selected);
+      }
+
+      // sparkles
+      for (const a of live) {
+        const rt = runtimeRef.current[a.key];
+        if (!rt) continue;
+        if (rt.sparkleUntilMs > ms) {
+          const t01 = clamp(1 - (rt.sparkleUntilMs - ms) / 520, 0, 1);
+          drawSparkle(ctx, rt.x, rt.y - 16, t01);
+          drawSparkle(ctx, rt.x + 6, rt.y - 10, clamp(t01 + 0.12, 0, 1));
+        }
+      }
+
+      // day/night overlay
+      const { hh } = wibNowParts();
+      const alpha = dayNightAlpha(hh);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "rgba(2,6,23,1)";
+      ctx.fillRect(0, 0, INTERNAL_W, INTERNAL_H);
+      if (hh < 6 || hh > 17) {
+        ctx.globalAlpha = alpha * 0.55;
+        ctx.fillStyle = "rgba(56,189,248,1)";
+        ctx.fillRect(0, 0, INTERNAL_W, INTERNAL_H);
+      }
+      ctx.restore();
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [blocked, floor, live, props, running, selected]);
+
   return (
     <div className="min-h-[calc(100vh-64px)] w-full bg-slate-950 text-slate-100">
       <div className="mx-auto flex max-w-6xl gap-4 px-4 py-6">
         <div className="flex-1 rounded-xl border border-slate-800 bg-slate-900/30 p-3">
           <div className="mb-2 flex items-center justify-between">
             <div className="text-sm font-semibold">Office</div>
-            <div className="text-xs text-slate-300">4 rooms · A* pathing · 20fps canvas · sprite sheets</div>
+            <div className="text-xs text-slate-300">Canvas 480×320 · 16px tiles · A* pathing · pixel-art props from code</div>
           </div>
 
           <div ref={containerRef} className="relative flex h-[560px] w-full items-center justify-center overflow-hidden rounded-lg bg-black/40">
-            <button
-              type="button"
-              onClick={() => {
-                setMuted((m) => {
-                  const next = !m;
-                  if (!next) {
-                    const eng = ensureAudioEngine(audioRef);
-                    if (eng.ctx.state === "suspended") eng.ctx.resume().catch(() => {});
-                  }
-                  return next;
-                });
-              }}
-              className="absolute right-2 top-2 z-10 rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1 text-xs text-slate-100 hover:bg-slate-950/80"
-              title={muted ? "Unmute" : "Mute"}
-            >
-              {muted ? "🔇" : "🔊"}
-            </button>
-
             <canvas ref={canvasRef} width={INTERNAL_W} height={INTERNAL_H} className="select-none" style={{ imageRendering: "pixelated" as any }} />
           </div>
 
@@ -1465,16 +1387,16 @@ export default function OfficePage() {
                 <div className="font-semibold text-slate-300">Behaviors</div>
                 <ul className="mt-1 list-disc space-y-1 pl-4">
                   <li>
-                    <span className="text-slate-200">Active/Busy</span>: seated at desk, typing (faster when busy)
+                    <span className="text-slate-200">Active/Busy</span>: walks to desk and types (frames 5–6)
                   </li>
                   <li>
-                    <span className="text-slate-200">Idle</span>: casual strolling (kitchen, lounge, peers) + sometimes reports to Yuri’s door
+                    <span className="text-slate-200">Idle</span>: wanders (kitchen/lounge/peers), sometimes returns to desk
                   </li>
                   <li>
-                    <span className="text-slate-200">Offline</span>: character hidden, monitors off
+                    <span className="text-slate-200">Offline</span>: hidden (parked at desk)
                   </li>
                   <li>
-                    <span className="text-slate-200">New run</span>: spawns at Yuri’s door with sparkle, walks to desk
+                    <span className="text-slate-200">Door safety</span>: agents never stop near doorways
                   </li>
                 </ul>
               </div>
@@ -1482,10 +1404,10 @@ export default function OfficePage() {
               <div className="text-xs text-slate-400">
                 <div className="font-semibold text-slate-300">Details</div>
                 <ul className="mt-1 list-disc space-y-1 pl-4">
-                  <li>Kitchen clock shows real WIB time</li>
-                  <li>Day/night tint based on WIB hour</li>
-                  <li>Monitor glow + scrolling code when working</li>
-                  <li>WebAudio: typing, footsteps, spawn chime, completion ding (muted by default)</li>
+                  <li>Day/night tint based on WIB time</li>
+                  <li>Kitchen clock displays WIB</li>
+                  <li>All furniture sprites are code-generated (no external office sprite sheet)</li>
+                  <li>Characters use /public/char_*.png sheets</li>
                 </ul>
               </div>
             </div>
