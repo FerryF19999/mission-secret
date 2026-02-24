@@ -1385,7 +1385,7 @@ function buildProps(): Prop[] {
   p.push({ kind: "plantDeco", tx: 2, ty: 12 });
 
   // entrance lobby (bottom wall) — visual only
-  p.push({ kind: "plaqueSign", tx: 5, ty: 17, text: "MISSION CONTROL" });
+  p.push({ kind: "plaqueSign", tx: 10, ty: 18, text: "MISSION CONTROL" });
   p.push({ kind: "plantDeco", tx: 6, ty: 18 });
   p.push({ kind: "plantDeco", tx: 8, ty: 18 });
 
@@ -2545,7 +2545,7 @@ function drawWorld(
   drawMat(DOOR_MAIN_RIGHT.tx + 1, DOOR_MAIN_RIGHT.ty, "YO");
   drawMat(DOOR_BOSS.tx, DOOR_BOSS.ty + 1, "B");
   // entrance mat (bottom wall)
-  drawMat(7, ROWS - 2, "WELCOME");
+  drawMat(10, ROWS - 2, "WELCOME");
 
   // walls (canvas API: charcoal/navy with panel lines + depth)
   const wall = (tx: number, ty: number) => {
@@ -3802,7 +3802,7 @@ export default function OfficePage() {
               onClick={() => {
                 const a = audioRef.current;
                 if (!a) return;
-                a.volume = 0.7;
+                a.volume = 1.0;
                 const next = !muted;
                 a.muted = next;
                 if (!next) {
