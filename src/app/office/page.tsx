@@ -19,6 +19,15 @@ type LiveAgent = {
 
 type CharAnim = "walk" | "idle" | "work";
 
+type ActivityKind =
+  | "desk"
+  | "coffee"
+  | "gaming"
+  | "watching_tv"
+  | "reading"
+  | "chatting"
+  | "wandering";
+
 type CharacterRuntime = {
   x: number; // px (internal canvas)
   y: number; // px (feet)
@@ -42,8 +51,10 @@ type CharacterRuntime = {
   sparkleUntilMs: number;
 
   // social / activity
+  activity: ActivityKind | null;
   activityBubble: string | null;
   activityUntilMs: number;
+  chatWith: RosterKey | null;
 
   // stuck detection
   lastMoveMs: number;
@@ -168,6 +179,48 @@ function isNearDoor(px: number, py: number, radiusTiles = 1.5) {
     if (Math.abs(tx - d.tx) <= radiusTiles && Math.abs(ty - d.ty) <= radiusTiles) return true;
   }
   return false;
+}
+
+function isWalkableTile(blocked: boolean[][], tx: number, ty: number) {
+  return ty >= 0 && ty < ROWS && tx >= 0 && tx < COLS && !blocked[ty]?.[tx];
+}
+
+function pickNearbyWalkable(
+  blocked: boolean[][],
+  base: { tx: number; ty: number },
+  radius = 2,
+  avoidDoors = true
+): { tx: number; ty: number } {
+  const candidates: Array<{ tx: number; ty: number; d: number }> = [];
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const tx = base.tx + dx;
+      const ty = base.ty + dy;
+      if (!isWalkableTile(blocked, tx, ty)) continue;
+      const p = tileCenter(tx, ty);
+      if (avoidDoors && isNearDoor(p.x, p.y, 1.2)) continue;
+      const d = Math.abs(dx) + Math.abs(dy);
+      candidates.push({ tx, ty, d });
+    }
+  }
+  candidates.sort((a, b) => a.d - b.d);
+  // pick among the closest few to add variety
+  const slice = candidates.slice(0, Math.min(10, candidates.length));
+  const pick = slice[Math.floor(Math.random() * slice.length)] ?? candidates[0];
+  return pick ? { tx: pick.tx, ty: pick.ty } : base;
+}
+
+function pickRandomWalkable(blocked: boolean[][], tries = 240) {
+  for (let i = 0; i < tries; i++) {
+    const tx = 1 + Math.floor(Math.random() * (COLS - 2));
+    const ty = 2 + Math.floor(Math.random() * (ROWS - 3));
+    if (!isWalkableTile(blocked, tx, ty)) continue;
+    const p = tileCenter(tx, ty);
+    if (isNearDoor(p.x, p.y, 1.3)) continue;
+    return { tx, ty };
+  }
+  // fallback: somewhere safe-ish
+  return { tx: 10, ty: 14 };
 }
 
 // --- Sprite helpers (code-generated) ---
@@ -1173,8 +1226,10 @@ export default function OfficePage() {
         typingFrame: 0,
         typingAcc: 0,
         sparkleUntilMs: 0,
+        activity: null,
         activityBubble: null,
         activityUntilMs: 0,
+        chatWith: null,
         lastMoveMs: 0,
         lastPos: { x: 0, y: 0 },
       };
@@ -1311,6 +1366,10 @@ export default function OfficePage() {
           rt.target = { x: p.x, y: p.y };
           rt.nextDecisionMs = 0;
           rt.goingToSeat = false;
+          rt.activity = null;
+          rt.activityBubble = null;
+          rt.activityUntilMs = 0;
+          rt.chatWith = null;
           continue;
         }
 
@@ -1319,6 +1378,12 @@ export default function OfficePage() {
 
         // target selection (do not let agents choose a rest point near doors)
         if (wantsWork) {
+          // working agents always return to desk; cancel any idle activity
+          rt.activity = null;
+          rt.chatWith = null;
+          rt.activityBubble = null;
+          rt.activityUntilMs = 0;
+
           const seat = SEATS[a.key];
           const dest = tileCenter(seat.tx, seat.ty);
           const dist = Math.hypot(dest.x - rt.x, dest.y - rt.y);
@@ -1340,30 +1405,130 @@ export default function OfficePage() {
             rt.anim = rt.path.length ? "walk" : "idle";
           }
         } else {
-          // idle: if we reached a seat, sometimes sit (idle anim but face desk), or wander.
+          // idle: ~40% at desk, ~60% doing small activities around the office.
           const nearTarget = Math.hypot(rt.target.x - rt.x, rt.target.y - rt.y) < 2.0;
 
-          // never idle near doorways
+          // finish an activity
+          if (rt.activity && rt.activityUntilMs > 0 && ms >= rt.activityUntilMs) {
+            rt.activity = null;
+            rt.chatWith = null;
+            rt.activityBubble = null;
+            rt.activityUntilMs = 0;
+            rt.nextDecisionMs = ms + randBetween(1200, 3800); // stagger so agents don't sync up
+          }
+
+          // if activity target ended up near a doorway, bail to desk
           if (nearTarget && isNearDoor(rt.x, rt.y)) {
             const seat = SEATS[a.key];
             const dest = tileCenter(seat.tx, seat.ty);
             rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
             rt.goingToSeat = true;
+            rt.activity = "desk";
+            rt.chatWith = null;
+            rt.activityBubble = null;
+            rt.activityUntilMs = 0;
             rt.anim = "walk";
           }
 
-          if (rt.path.length === 0 && (rt.nextDecisionMs === 0 || ms >= rt.nextDecisionMs) && nearTarget) {
-            // Simple: always go back to desk when idle
-            const seat = SEATS[a.key];
-            const dest = tileCenter(seat.tx, seat.ty);
-            rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
-            rt.goingToSeat = true;
-            rt.anim = rt.path.length ? "walk" : "idle";
-            rt.nextDecisionMs = ms + randBetween(8000, 15000);
+          // decide a new idle activity only when we are not already doing one
+          if (
+            !rt.activity &&
+            rt.path.length === 0 &&
+            (rt.nextDecisionMs === 0 || ms >= rt.nextDecisionMs) &&
+            nearTarget
+          ) {
+            const doActivity = Math.random() < 0.6;
+            const kind: ActivityKind =
+              !doActivity || Math.random() < 0.4
+                ? "desk"
+                : (() => {
+                    const r = Math.random();
+                    if (r < 0.18) return "coffee";
+                    if (r < 0.33) return "reading";
+                    if (r < 0.48) return "gaming";
+                    if (r < 0.62) return "watching_tv";
+                    if (r < 0.78) return "chatting";
+                    return "wandering";
+                  })();
+
+            rt.activity = kind;
+            rt.activityBubble = null;
+            rt.activityUntilMs = 0;
+            rt.chatWith = null;
+
+            // choose a destination tile
+            let destTile: { tx: number; ty: number } | null = null;
+
+            if (kind === "desk") {
+              const seat = SEATS[a.key];
+              destTile = { tx: seat.tx, ty: seat.ty };
+              rt.goingToSeat = true;
+            }
+
+            if (kind === "coffee") destTile = pickNearbyWalkable(blocked, { tx: 28, ty: 2 }, 2);
+            if (kind === "gaming") destTile = pickNearbyWalkable(blocked, { tx: 20, ty: 15 }, 2);
+            if (kind === "watching_tv") destTile = pickNearbyWalkable(blocked, { tx: 24, ty: 12 }, 2);
+            if (kind === "reading") {
+              const base = Math.random() < 0.5 ? { tx: 2, ty: 2 } : { tx: 11, ty: 11 };
+              destTile = pickNearbyWalkable(blocked, base, 2);
+            }
+            if (kind === "wandering") destTile = pickRandomWalkable(blocked);
+
+            if (kind === "chatting") {
+              const candidates = live
+                .filter((b) => b.key !== a.key)
+                .filter((b) => b.status !== "offline" || b.key === "yuri")
+                .filter((b) => {
+                  const brt = runtimeRef.current[b.key];
+                  if (!brt) return false;
+                  const bWantsWork = runningSet.has(b.key) || b.status === "busy";
+                  if (bWantsWork) return false;
+                  if (brt.anim === "walk" || brt.path.length) return false;
+                  if (brt.activity === "chatting") return false;
+                  return true;
+                });
+
+              const partner = candidates[Math.floor(Math.random() * candidates.length)];
+              const prt = partner ? runtimeRef.current[partner.key] : null;
+
+              if (partner && prt) {
+                const endMs = ms + randBetween(6500, 11000);
+
+                // partner stays put and joins chat
+                prt.activity = "chatting";
+                prt.chatWith = a.key;
+                prt.activityBubble = null;
+                prt.activityUntilMs = endMs;
+                prt.nextDecisionMs = endMs + randBetween(1200, 3200);
+
+                rt.chatWith = partner.key;
+                rt.activityUntilMs = endMs;
+                rt.nextDecisionMs = endMs + randBetween(1200, 3200);
+
+                const bTile = toTile(prt.x, prt.y);
+                destTile = pickNearbyWalkable(blocked, bTile, 1);
+              } else {
+                // no partner available; fallback
+                rt.activity = "wandering";
+                destTile = pickRandomWalkable(blocked);
+              }
+            }
+
+            if (destTile) {
+              const dest = tileCenter(destTile.tx, destTile.ty);
+              rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
+              rt.target = dest;
+              rt.anim = rt.path.length ? "walk" : "idle";
+            }
+
+            // next decision only after completing an activity (or if we fail to path)
+            if (!rt.path.length) {
+              rt.nextDecisionMs = ms + randBetween(2500, 7000);
+            }
           }
 
-          // if at own seat and not moving, face down (desk)
-          if (rt.path.length === 0 && !wantsWork) {
+          // if not moving and not working, idle anim
+          if (rt.path.length === 0) {
             rt.anim = "idle";
           }
         }
@@ -1403,12 +1568,58 @@ export default function OfficePage() {
               rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
               rt.goingToSeat = true;
             } else if (rt.goingToSeat) {
-              // sit/idle at seat for a bit
+              // reached desk/seat during idle
+              const seat = SEATS[a.key];
+              rt.dir = seat.face;
               rt.anim = "idle";
+
+              if (rt.activity === "desk" && rt.activityUntilMs === 0) {
+                // hang at desk (no bubble)
+                rt.activityBubble = null;
+                rt.activityUntilMs = ms + randBetween(4500, 11000);
+              }
+
               rt.nextDecisionMs = ms + randBetween(5500, 12000);
               rt.goingToSeat = false;
             } else {
+              // arrived at an activity spot
               rt.anim = "idle";
+
+              if (rt.activity && rt.activityUntilMs === 0) {
+                let bubble: string | null = null;
+                let dur = 0;
+
+                if (rt.activity === "coffee") {
+                  bubble = "☕";
+                  dur = randBetween(3000, 5000);
+                }
+                if (rt.activity === "gaming") {
+                  bubble = "🎮";
+                  dur = randBetween(5000, 10000);
+                }
+                if (rt.activity === "watching_tv") {
+                  bubble = "📺";
+                  dur = randBetween(5000, 9000);
+                }
+                if (rt.activity === "reading") {
+                  bubble = "📖";
+                  dur = randBetween(4000, 8000);
+                }
+                if (rt.activity === "wandering") {
+                  bubble = null;
+                  dur = randBetween(1000, 2400);
+                }
+                if (rt.activity === "chatting") {
+                  bubble = null; // handled by chat alternation below
+                  dur = 0;
+                }
+
+                rt.activityBubble = bubble;
+                if (dur > 0) {
+                  rt.activityUntilMs = ms + dur;
+                }
+                // If dur === 0 (chatting), it was pre-seeded.
+              }
             }
           }
         }
@@ -1422,6 +1633,34 @@ export default function OfficePage() {
         if (movedDist > 2) {
           rt.lastMoveMs = ms;
           rt.lastPos = { x: rt.x, y: rt.y };
+        }
+
+        // chatting: face partner + alternate 💬 bubbles
+        if (rt.activity === "chatting" && rt.chatWith && rt.activityUntilMs > ms) {
+          const other = runtimeRef.current[rt.chatWith];
+          if (!other || other.activity !== "chatting" || other.chatWith !== a.key) {
+            rt.activity = null;
+            rt.chatWith = null;
+            rt.activityBubble = null;
+            rt.activityUntilMs = 0;
+          } else if (rt.path.length === 0 && other.path.length === 0) {
+            const dx = other.x - rt.x;
+            const dy = other.y - rt.y;
+            if (Math.hypot(dx, dy) > 1.5 && Math.hypot(dx, dy) < 42) {
+              rt.dir = dirFromDelta(dx, dy);
+              other.dir = dirFromDelta(-dx, -dy);
+            }
+
+            const phase = Math.floor(ms / 900) % 2;
+            const aIsFirst = a.key < rt.chatWith; // stable tie-breaker
+            const aSpeaks = (phase === 0) === aIsFirst;
+            rt.activityBubble = aSpeaks ? "💬" : null;
+            other.activityBubble = aSpeaks ? null : "💬";
+
+            // keep bubbles alive until the chat ends
+            rt.activityUntilMs = Math.max(rt.activityUntilMs, other.activityUntilMs);
+            other.activityUntilMs = rt.activityUntilMs;
+          }
         }
 
         // anim clocks
@@ -1472,6 +1711,7 @@ export default function OfficePage() {
           if (!a.rt || !b.rt) continue;
           if (a.rt.anim === "work" || b.rt.anim === "work") continue;
           if (a.rt.anim === "walk" || b.rt.anim === "walk") continue;
+          if (a.rt.activity || b.rt.activity) continue;
           const dist = Math.hypot(a.rt.x - b.rt.x, a.rt.y - b.rt.y);
           if (dist < 28 && dist > 3) {
             // Close and both idle — trigger chat
