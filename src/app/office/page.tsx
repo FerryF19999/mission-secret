@@ -1412,15 +1412,18 @@ function buildProps(): Prop[] {
   p.push({ kind: "ceilingLight", tx: 15, ty: 3 });
   p.push({ kind: "frame", tx: 13, ty: 0 });
 
-  // lounge (bottom-right) — TV wall + console, with couch facing it
-  // Place the TV on the lounge feature wall and center the couch beneath it.
-  p.push({ kind: "tv", tx: 14, ty: 8 });
-  p.push({ kind: "playstation", tx: 14, ty: 9 });
-  p.push({ kind: "neonSign", tx: 16, ty: 8, text: "GAME ON" });
-  p.push({ kind: "rug", tx: 13, ty: 11 });
-  p.push({ kind: "coffeeTable", tx: 14, ty: 11 });
-  // couch footprint starts at (13,12) so activity tiles (13,12)/(14,12) are on the couch area
-  p.push({ kind: "couch", tx: 13, ty: 12 });
+  // lounge (bottom-right) — TV mounted on the WALL, couch facing it
+  // NOTE: the kitchen↔lounge doorway spans x=14..16 on the split wall (y=SPLIT_Y), so keep the TV away from that opening.
+  // Mount TV on the lounge top wall (y=SPLIT_Y) and place seating below it facing upward.
+  p.push({ kind: "tv", tx: 12, ty: SPLIT_Y });
+  p.push({ kind: "playstation", tx: 12, ty: SPLIT_Y + 1 });
+  p.push({ kind: "neonSign", tx: 17, ty: 8, text: "GAME ON" });
+
+  // lounge seating vignette (rug + table + couch). Keep walkable tiles in FRONT of the couch for activities.
+  p.push({ kind: "rug", tx: 11, ty: 11 });
+  p.push({ kind: "coffeeTable", tx: 12, ty: 11 });
+  p.push({ kind: "couch", tx: 11, ty: 12 });
+
   p.push({ kind: "bookshelf", tx: 17, ty: 9 });
   p.push({ kind: "wallClock", tx: 19, ty: 9 });
   p.push({ kind: "frame", tx: 19, ty: 11 });
@@ -2249,7 +2252,18 @@ function drawChair(ctx: CanvasRenderingContext2D, x: number, y: number) {
 
 function drawBookshelf(ctx: CanvasRenderingContext2D, x: number, y: number, seed: number) {
   // 32x32 — wooden frame + 4 shelves + colorful books (varying widths, some tilted) + a few decor gaps.
+  // Make it pop against dark walls with a subtle halo/backplate, and crisp book edges + labels.
   ctx.save();
+
+  // subtle wall-separation halo (so the shelf doesn't blend into the wall)
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = "rgba(226,232,240,0.10)";
+  ctx.fillRect(x, y, 32, 32);
+  ctx.globalAlpha = 0.12;
+  ctx.fillStyle = "rgba(56,189,248,0.20)";
+  ctx.fillRect(x + 1, y + 1, 30, 30);
+  ctx.restore();
 
   // shadow under bookshelf
   ctx.save();
@@ -2354,15 +2368,18 @@ function drawBookshelf(ctx: CanvasRenderingContext2D, x: number, y: number, seed
         ctx.fillStyle = "rgba(255,255,255,0.78)";
         ctx.fillRect(-w / 2 + 0.6, -h + 2, 1, h - 2);
 
-        // tiny title marks / label band
-        ctx.globalAlpha = 0.85;
-        ctx.fillStyle = label ? (darkLabel ? "rgba(15,23,42,0.55)" : "rgba(226,232,240,0.75)") : "rgba(255,255,255,0.0)";
+        // tiny title marks / label band (higher contrast so books read clearly)
         if (label && w >= 3) {
+          ctx.globalAlpha = 0.92;
+          ctx.fillStyle = darkLabel ? "rgba(15,23,42,0.72)" : "rgba(226,232,240,0.90)";
           ctx.fillRect(-w / 2 + 1, -h + 3, w - 2, 2);
-          ctx.globalAlpha = 0.55;
-          ctx.fillStyle = darkLabel ? "rgba(226,232,240,0.85)" : "rgba(15,23,42,0.45)";
+
+          // faux text lines
+          ctx.globalAlpha = 0.75;
+          ctx.fillStyle = darkLabel ? "rgba(226,232,240,0.92)" : "rgba(15,23,42,0.55)";
           ctx.fillRect(-w / 2 + 1, -h + 6, w - 2, 1);
           if (h > 8) ctx.fillRect(-w / 2 + 1, -h + 8, w - 2, 1);
+          if (h > 9 && w > 3) ctx.fillRect(-w / 2 + 1, -h + 9, w - 3, 1);
         }
       } else {
         ctx.fillRect(xx, shelfY - h + 1, w, h);
@@ -2377,15 +2394,18 @@ function drawBookshelf(ctx: CanvasRenderingContext2D, x: number, y: number, seed
         ctx.fillStyle = "rgba(255,255,255,0.78)";
         ctx.fillRect(xx + 0.6, shelfY - h + 2, 1, h - 2);
 
-        // tiny title marks / label band
+        // tiny title marks / label band (higher contrast so books read clearly)
         if (label && w >= 3) {
-          ctx.globalAlpha = 0.85;
-          ctx.fillStyle = darkLabel ? "rgba(15,23,42,0.55)" : "rgba(226,232,240,0.75)";
+          ctx.globalAlpha = 0.92;
+          ctx.fillStyle = darkLabel ? "rgba(15,23,42,0.72)" : "rgba(226,232,240,0.90)";
           ctx.fillRect(xx + 1, shelfY - h + 3, w - 2, 2);
-          ctx.globalAlpha = 0.55;
-          ctx.fillStyle = darkLabel ? "rgba(226,232,240,0.85)" : "rgba(15,23,42,0.45)";
+
+          // faux text lines
+          ctx.globalAlpha = 0.75;
+          ctx.fillStyle = darkLabel ? "rgba(226,232,240,0.92)" : "rgba(15,23,42,0.55)";
           ctx.fillRect(xx + 1, shelfY - h + 6, w - 2, 1);
           if (h > 8) ctx.fillRect(xx + 1, shelfY - h + 8, w - 2, 1);
+          if (h > 9 && w > 3) ctx.fillRect(xx + 1, shelfY - h + 9, w - 3, 1);
         }
       }
       ctx.restore();
@@ -3029,10 +3049,12 @@ function drawWorldStatic(
   ctx.restore();
 
   // Lounge: feature wall behind TV (navy band)
+  // TV is mounted on the lounge split wall (y=SPLIT_Y) at tx=12.
   ctx.save();
   ctx.globalAlpha = 0.65;
-  ctx.fillStyle = "rgba(30,41,59,0.8)";
-  ctx.fillRect(13 * TILE, 8 * TILE, 5 * TILE, 4 * TILE);
+  ctx.fillStyle = "rgba(30,41,59,0.82)";
+  // a slightly wider panel around the TV so it reads as a dedicated media wall
+  ctx.fillRect(11 * TILE, SPLIT_Y * TILE, 6 * TILE, 5 * TILE);
   ctx.restore();
 
   // Main office: minimal two-tone stripe on bottom wall area
@@ -3868,10 +3890,10 @@ export default function OfficePage() {
               ];
               destTile = spots[Math.floor(Math.random() * spots.length)];
             }
-            // 🎮 Gaming: sit on couch and play — face the TV
-            if (kind === "gaming") destTile = { tx: 13, ty: 12 };
-            // 📺 Watch TV: also on couch area facing TV
-            if (kind === "watching_tv") destTile = { tx: 14, ty: 12 };
+            // 🎮 Gaming / 📺 Watching TV: stand on the walkable tiles in FRONT of the couch, facing the wall-mounted TV.
+            // (Couch tiles are blocked for pathing, so we target the row in front of it.)
+            if (kind === "gaming") destTile = { tx: 12, ty: 13 };
+            if (kind === "watching_tv") destTile = { tx: 11, ty: 13 };
             // 📖 Reading: stand in front of a bookshelf
             if (kind === "reading") {
               const spots = [
