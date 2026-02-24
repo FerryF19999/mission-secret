@@ -95,8 +95,8 @@ function randBetween(a: number, b: number) {
 }
 
 function tileCenter(tx: number, ty: number) {
-  // foot anchor: slightly lower than tile center so head clears desks
-  return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 + 4 };
+  // center of tile — character drawn upward from feet at this y
+  return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE };
 }
 
 function toTile(px: number, py: number) {
@@ -545,7 +545,7 @@ function buildFloor(): FloorKind[][] {
   return map;
 }
 
-const SITTING_OFFSET_Y = 6; // px: draw character lower (into desk) when sitting — seat is above desk
+const SITTING_OFFSET_Y = 4; // px: nudge character down into desk when sitting
 
 const SEATS: Record<RosterKey, { tx: number; ty: number; face: Dir }> = {
   // Seat ABOVE desk, facing DOWN toward it (so you see the character's face typing)
