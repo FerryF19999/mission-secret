@@ -1384,8 +1384,8 @@ function buildProps(): Prop[] {
   p.push({ kind: "plantDeco", tx: 3, ty: 11 });
   p.push({ kind: "plantDeco", tx: 2, ty: 12 });
 
-  // entrance lobby (bottom wall) — visual only
-  p.push({ kind: "plaqueSign", tx: 10, ty: 18, text: "MISSION CONTROL" });
+  // entrance lobby (bottom wall) — visual only, moved to avoid furniture overlap
+  p.push({ kind: "plaqueSign", tx: 3, ty: 18, text: "MISSION CONTROL" });
   p.push({ kind: "plantDeco", tx: 6, ty: 18 });
   p.push({ kind: "plantDeco", tx: 8, ty: 18 });
 
@@ -2841,7 +2841,7 @@ function drawWorld(
   drawMat(DOOR_MAIN_RIGHT.tx + 1, DOOR_MAIN_RIGHT.ty, "YO");
   drawMat(DOOR_BOSS.tx, DOOR_BOSS.ty + 1, "B");
   // entrance mat (bottom wall)
-  drawMat(10, ROWS - 2, "WELCOME");
+  drawMat(3, ROWS - 2, "WELCOME");
 
   // walls (canvas API: charcoal/navy with panel lines + depth)
   const wall = (tx: number, ty: number) => {
