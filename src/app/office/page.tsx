@@ -789,6 +789,7 @@ type Prop =
   | { kind: "desk"; tx: number; ty: number; owner?: RosterKey }
   | { kind: "bookshelf"; tx: number; ty: number }
   | { kind: "plant"; tx: number; ty: number }
+  | { kind: "plantDeco"; tx: number; ty: number }
   | { kind: "vending"; tx: number; ty: number }
   | { kind: "couch"; tx: number; ty: number }
   | { kind: "cooler"; tx: number; ty: number }
@@ -803,7 +804,16 @@ type Prop =
   | { kind: "coffeeTable"; tx: number; ty: number }
   | { kind: "counter"; tx: number; ty: number }
   | { kind: "tv"; tx: number; ty: number }
-  | { kind: "playstation"; tx: number; ty: number };
+  | { kind: "playstation"; tx: number; ty: number }
+  // visual-only / decorative
+  | { kind: "neonSign"; tx: number; ty: number; text?: string }
+  | { kind: "galleryFrame"; tx: number; ty: number; w: number; h: number }
+  | { kind: "shelfDecor"; tx: number; ty: number; variant: "globe" | "trophy" }
+  | { kind: "execDesk"; tx: number; ty: number }
+  | { kind: "execChair"; tx: number; ty: number }
+  | { kind: "standingLamp"; tx: number; ty: number }
+  | { kind: "visitorSeat"; tx: number; ty: number }
+  | { kind: "plaqueSign"; tx: number; ty: number; text: string };
 
 function buildFloor(): FloorKind[][] {
   const map: FloorKind[][] = [];
@@ -846,8 +856,30 @@ function buildProps(): Prop[] {
 
   // boss room (top-left)
   p.push({ kind: "bookshelf", tx: 2, ty: 2 });
+  // luxury bookshelf decor
+  p.push({ kind: "shelfDecor", tx: 2, ty: 2, variant: "globe" });
+  p.push({ kind: "shelfDecor", tx: 3, ty: 2, variant: "trophy" });
+
   p.push({ kind: "plant", tx: 12, ty: 2 });
   p.push({ kind: "plant", tx: 8, ty: 2 });
+
+  // keep Yuri's real desk for activities/pathing, but add a visual "executive" desk + chair around it
+  p.push({ kind: "execDesk", tx: 2, ty: 4 });
+  p.push({ kind: "execChair", tx: 4, ty: 2 });
+  p.push({ kind: "rug", tx: 2, ty: 3 }); // fancy rug under the exec desk area
+  p.push({ kind: "standingLamp", tx: 13, ty: 3 });
+  p.push({ kind: "visitorSeat", tx: 10, ty: 7 });
+  p.push({ kind: "visitorSeat", tx: 12, ty: 7 });
+
+  // gallery wall (boss room)
+  p.push({ kind: "galleryFrame", tx: 5, ty: 1, w: 12, h: 8 });
+  p.push({ kind: "galleryFrame", tx: 7, ty: 1, w: 10, h: 6 });
+  p.push({ kind: "galleryFrame", tx: 9, ty: 1, w: 12, h: 7 });
+  p.push({ kind: "galleryFrame", tx: 11, ty: 2, w: 9, h: 7 });
+
+  // premium art on walls
+  p.push({ kind: "painting", tx: 13, ty: 1 });
+
   p.push({ kind: "desk", tx: DESK_POS.yuri.tx, ty: DESK_POS.yuri.ty, owner: "yuri" });
 
   // main office desks
@@ -861,6 +893,16 @@ function buildProps(): Prop[] {
   p.push({ kind: "plant", tx: 13, ty: 11 });
   p.push({ kind: "plant", tx: 13, ty: 18 });
   p.push({ kind: "plant", tx: 1, ty: 15 });
+
+  // plant corner (instagrammable) — cluster, non-blocking
+  p.push({ kind: "plantDeco", tx: 2, ty: 11 });
+  p.push({ kind: "plantDeco", tx: 3, ty: 11 });
+  p.push({ kind: "plantDeco", tx: 2, ty: 12 });
+
+  // entrance lobby (bottom wall) — visual only
+  p.push({ kind: "plaqueSign", tx: 5, ty: 17, text: "MISSION CONTROL" });
+  p.push({ kind: "plantDeco", tx: 6, ty: 18 });
+  p.push({ kind: "plantDeco", tx: 8, ty: 18 });
 
   // main office wall decor + utility
   p.push({ kind: "whiteboard", tx: 0, ty: 14 });
@@ -891,6 +933,7 @@ function buildProps(): Prop[] {
   // Lounge - living room layout: TV on wall, couch facing it, coffee table between
   p.push({ kind: "tv", tx: 22, ty: 12 });           // TV centered on wall
   p.push({ kind: "playstation", tx: 22, ty: 13 });  // PS console under TV
+  p.push({ kind: "neonSign", tx: 20, ty: 11, text: "GAME ON" });
   p.push({ kind: "rug", tx: 20, ty: 14 });          // warm rug under seating
   p.push({ kind: "coffeeTable", tx: 22, ty: 15 });  // coffee table in front of couch
   p.push({ kind: "couch", tx: 21, ty: 17 });        // couch facing TV (further back)
@@ -962,6 +1005,17 @@ function buildBlocked(props: Prop[]) {
     if (pr.kind === "tv") {} // wall mounted
     if (pr.kind === "playstation") mark(pr.tx, pr.ty, 1, 1);
     if (pr.kind === "plant") mark(pr.tx, pr.ty, 1, 1);
+
+    // visual-only props
+    if (pr.kind === "plantDeco") {}
+    if (pr.kind === "neonSign") {}
+    if (pr.kind === "galleryFrame") {}
+    if (pr.kind === "shelfDecor") {}
+    if (pr.kind === "execDesk") {}
+    if (pr.kind === "execChair") {}
+    if (pr.kind === "standingLamp") {}
+    if (pr.kind === "visitorSeat") {}
+    if (pr.kind === "plaqueSign") {}
   }
 
   // doors are passable — ensure all 3 tiles of each door are clear
@@ -1126,7 +1180,8 @@ function isPointInCharacter(px: number, py: number, rt: CharacterRuntime) {
 function drawKitchenClock(ctx: CanvasRenderingContext2D) {
   const { hh, mm } = wibNowParts();
   const text = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")} WIB`;
-  const x = 24 * TILE + 8;
+  // keep a bit more padding from the right wall
+  const x = 23 * TILE + 8;
   const y = 2 * TILE + 8;
   ctx.save();
   ctx.globalAlpha = 0.92;
@@ -1282,6 +1337,8 @@ function drawWorld(
   drawMat(DOOR_MAIN_RIGHT.tx - 1, DOOR_MAIN_RIGHT.ty, "HI");
   drawMat(DOOR_MAIN_RIGHT.tx + 1, DOOR_MAIN_RIGHT.ty, "YO");
   drawMat(DOOR_BOSS.tx, DOOR_BOSS.ty + 1, "B");
+  // entrance mat (bottom wall)
+  drawMat(7, ROWS - 2, "WELCOME");
 
   // walls
   const wall = (tx: number, ty: number) => {
@@ -1329,6 +1386,86 @@ function drawWorld(
     }
   }
 
+  // --- Wallpaper / accent walls (visual overlays on wall tiles) ---
+  // Boss room: dark wood paneling stripes on enclosure walls
+  ctx.save();
+  for (let y = 1; y < BOSS_WALL_Y; y++) {
+    const stripe = y % 2 === 0;
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = stripe ? "rgba(74,44,20,0.75)" : "rgba(48,28,14,0.75)";
+    // left wall
+    ctx.fillRect(1 * TILE, y * TILE, 16, 16);
+    // right wall
+    ctx.fillRect((SPLIT_X - 1) * TILE, y * TILE, 16, 16);
+  }
+  for (let x = 1; x < SPLIT_X - 1; x++) {
+    const stripe = x % 2 === 0;
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = stripe ? "rgba(74,44,20,0.75)" : "rgba(48,28,14,0.75)";
+    ctx.fillRect(x * TILE, 1 * TILE, 16, 16);
+  }
+  ctx.restore();
+
+  // Kitchen: subway tile grid on top wall section behind counter
+  ctx.save();
+  for (let x = 18; x <= 26; x++) {
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.fillRect(x * TILE, 0, 16, 16);
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = "rgba(148,163,184,0.35)";
+    ctx.lineWidth = 1;
+    // small grid
+    ctx.beginPath();
+    ctx.moveTo(x * TILE + 0.5, 0.5);
+    ctx.lineTo(x * TILE + 15.5, 0.5);
+    ctx.moveTo(x * TILE + 0.5, 8.5);
+    ctx.lineTo(x * TILE + 15.5, 8.5);
+    ctx.moveTo(x * TILE + 8.5, 0.5);
+    ctx.lineTo(x * TILE + 8.5, 15.5);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Lounge: feature wall behind TV (navy band)
+  ctx.save();
+  ctx.globalAlpha = 0.65;
+  ctx.fillStyle = "rgba(30,41,59,0.8)";
+  ctx.fillRect(20 * TILE, 11 * TILE, 6 * TILE, 4 * TILE);
+  ctx.restore();
+
+  // Main office: minimal two-tone stripe on bottom wall area
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = "rgba(148,163,184,0.18)";
+  ctx.fillRect(1 * TILE, (ROWS - 1) * TILE, (SPLIT_X - 2) * TILE, 16);
+  ctx.restore();
+
+  // --- Entrance (bottom wall): glass door + frame ---
+  {
+    const doorTx = 7;
+    const x = doorTx * TILE;
+    const y = (ROWS - 1) * TILE;
+    ctx.save();
+    // frame
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "rgba(15,23,42,0.85)";
+    ctx.fillRect(x - 1, y - 16, 18, 32);
+    // glass
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = "rgba(34,211,238,0.55)";
+    ctx.fillRect(x + 2, y - 13, 12, 26);
+    // shine
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillRect(x + 4, y - 12, 2, 24);
+    // handle
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = "rgba(226,232,240,0.9)";
+    ctx.fillRect(x + 11, y + 1, 1, 5);
+    ctx.restore();
+  }
+
   // props (big first)
   const drawAt = (spr: Sprite, tx: number, ty: number) => {
     ctx.drawImage(spr.canvas, tx * TILE, ty * TILE);
@@ -1341,6 +1478,44 @@ function drawWorld(
 
   // main furniture / floor props
   for (const pr of props) {
+    if (pr.kind === "execDesk") {
+      const x = pr.tx * TILE;
+      const y = pr.ty * TILE;
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      // dark walnut top (3x2 tiles)
+      ctx.fillStyle = "#5b3a1e";
+      ctx.fillRect(x, y, 48, 32);
+      // edge highlight
+      ctx.globalAlpha = 0.65;
+      ctx.fillStyle = "rgba(253,230,138,0.18)";
+      ctx.fillRect(x, y, 48, 3);
+      // inset leather blotter
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = "rgba(15,23,42,0.45)";
+      ctx.fillRect(x + 10, y + 10, 28, 12);
+      // legs
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "#3b2a1a";
+      ctx.fillRect(x + 2, y + 26, 6, 6);
+      ctx.fillRect(x + 40, y + 26, 6, 6);
+      ctx.restore();
+    }
+    if (pr.kind === "visitorSeat") {
+      const x = pr.tx * TILE;
+      const y = pr.ty * TILE;
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = "rgba(30,41,59,0.65)";
+      ctx.fillRect(x + 3, y + 7, 10, 7);
+      ctx.fillStyle = "rgba(226,232,240,0.35)";
+      ctx.fillRect(x + 3, y + 5, 10, 2);
+      ctx.fillStyle = "rgba(15,23,42,0.75)";
+      ctx.fillRect(x + 4, y + 13, 2, 2);
+      ctx.fillRect(x + 10, y + 13, 2, 2);
+      ctx.restore();
+    }
+
     if (pr.kind === "desk") drawAt(sprites.desk, pr.tx, pr.ty);
     if (pr.kind === "bookshelf") drawAt(sprites.bookshelf, pr.tx, pr.ty);
     if (pr.kind === "vending") drawAt(sprites.vending, pr.tx, pr.ty);
@@ -1357,6 +1532,39 @@ function drawWorld(
   // plants on top
   for (const pr of props) {
     if (pr.kind === "plant") drawAt(sprites.plant, pr.tx, pr.ty);
+    if (pr.kind === "plantDeco") {
+      const x = pr.tx * TILE;
+      const y = pr.ty * TILE;
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = "rgba(15,23,42,0.65)";
+      ctx.fillRect(x + 5, y + 11, 6, 4); // pot
+      ctx.fillStyle = "rgba(34,197,94,0.85)";
+      ctx.fillRect(x + 6, y + 6, 1, 6);
+      ctx.fillRect(x + 8, y + 5, 1, 7);
+      ctx.fillRect(x + 10, y + 7, 1, 5);
+      ctx.fillStyle = "rgba(34,197,94,0.55)";
+      ctx.fillRect(x + 7, y + 8, 1, 5);
+      ctx.restore();
+    }
+    if (pr.kind === "execChair") {
+      const x = pr.tx * TILE;
+      const y = pr.ty * TILE;
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      // backrest
+      ctx.fillStyle = "rgba(51,33,24,0.9)";
+      ctx.fillRect(x + 4, y + 2, 8, 8);
+      // seat
+      ctx.fillStyle = "rgba(71,44,32,0.9)";
+      ctx.fillRect(x + 3, y + 10, 10, 5);
+      // small studs highlight
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = "rgba(253,230,138,0.35)";
+      ctx.fillRect(x + 5, y + 4, 1, 1);
+      ctx.fillRect(x + 10, y + 4, 1, 1);
+      ctx.restore();
+    }
   }
 
   // wall decor / ceiling fixtures
@@ -1366,6 +1574,118 @@ function drawWorld(
     if (pr.kind === "frame") drawAt(sprites.frame, pr.tx, pr.ty);
     if (pr.kind === "wallClock") drawAt(sprites.wallClock, pr.tx, pr.ty);
     if (pr.kind === "ceilingLight") drawAt(sprites.ceilingLight, pr.tx, pr.ty);
+
+    if (pr.kind === "galleryFrame") {
+      const x = pr.tx * TILE;
+      const y = pr.ty * TILE;
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "rgba(2,6,23,0.65)";
+      ctx.fillRect(x + 1, y + 1, pr.w, pr.h);
+      ctx.strokeStyle = "rgba(226,232,240,0.35)";
+      ctx.strokeRect(x + 1.5, y + 1.5, pr.w - 1, pr.h - 1);
+      // matte
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = "rgba(226,232,240,0.10)";
+      ctx.fillRect(x + 3, y + 3, pr.w - 4, pr.h - 4);
+      ctx.restore();
+    }
+
+    if (pr.kind === "shelfDecor") {
+      const x = pr.tx * TILE;
+      const y = pr.ty * TILE;
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      if (pr.variant === "globe") {
+        ctx.fillStyle = "rgba(56,189,248,0.35)";
+        ctx.beginPath();
+        ctx.arc(x + 6, y + 7, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(226,232,240,0.35)";
+        ctx.stroke();
+        ctx.fillStyle = "rgba(15,23,42,0.75)";
+        ctx.fillRect(x + 4, y + 12, 6, 2);
+      } else {
+        // trophy
+        ctx.fillStyle = "rgba(253,230,138,0.75)";
+        ctx.fillRect(x + 10, y + 6, 4, 4);
+        ctx.fillRect(x + 11, y + 10, 2, 3);
+        ctx.fillStyle = "rgba(15,23,42,0.75)";
+        ctx.fillRect(x + 10, y + 13, 4, 2);
+      }
+      ctx.restore();
+    }
+
+    if (pr.kind === "standingLamp") {
+      const x = pr.tx * TILE;
+      const y = pr.ty * TILE;
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = "rgba(15,23,42,0.75)";
+      ctx.fillRect(x + 7, y + 3, 2, 11);
+      ctx.fillStyle = "rgba(226,232,240,0.75)";
+      ctx.fillRect(x + 4, y + 2, 8, 3);
+      // glow
+      ctx.globalAlpha = 0.35;
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = "rgba(253,230,138,0.8)";
+      ctx.fillStyle = "rgba(253,230,138,0.25)";
+      ctx.beginPath();
+      ctx.arc(x + 8, y + 4, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    if (pr.kind === "plaqueSign") {
+      const x = pr.tx * TILE;
+      const y = pr.ty * TILE;
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = "rgba(2,6,23,0.75)";
+      ctx.strokeStyle = "rgba(56,189,248,0.35)";
+      ctx.lineWidth = 1;
+      const w = Math.max(80, Math.ceil(pr.text.length * 5.5) + 20);
+      const h = 14;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, 6);
+      ctx.fill();
+      ctx.stroke();
+      ctx.font = "8px ui-monospace, SFMono-Regular, Menlo, Monaco";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "rgba(226,232,240,0.9)";
+      ctx.fillText(pr.text, x + 10, y + h / 2 + 0.5);
+      ctx.restore();
+    }
+  }
+
+  // neon sign (after feature wall, before characters)
+  for (const pr of props) {
+    if (pr.kind !== "neonSign") continue;
+    const x = pr.tx * TILE;
+    const y = pr.ty * TILE;
+    const text = pr.text ?? "GAME ON";
+    ctx.save();
+    ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, Monaco";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.globalCompositeOperation = "lighter";
+    // glow layers
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = "rgba(168,85,247,0.9)";
+    ctx.fillStyle = "rgba(168,85,247,0.9)";
+    ctx.globalAlpha = 0.55;
+    ctx.fillText(text, x + 2, y + 2);
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = "rgba(34,211,238,0.9)";
+    ctx.fillStyle = "rgba(34,211,238,0.95)";
+    ctx.globalAlpha = 0.85;
+    ctx.fillText(text, x + 1, y + 1);
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(226,232,240,0.95)";
+    ctx.fillText(text, x, y);
+    ctx.restore();
   }
 
   // warm light pools near ceiling lights
@@ -1449,10 +1769,11 @@ function drawWorld(
     ctx.fillText(text, x + 11, y + 6);
     ctx.restore();
   };
-  plaque(2, 11, "MAIN OFFICE", "rgba(56,189,248,0.95)");
-  plaque(17, 2, "KITCHEN", "rgba(34,197,94,0.95)");
-  plaque(18, 12, "LOUNGE", "rgba(251,191,36,0.95)");
-  plaque(3, 2, "BOSS ROOM", "rgba(244,114,182,0.95)");
+  // Place labels in open space so they don't overlap props/agent labels
+  plaque(1, 11, "MAIN OFFICE", "rgba(56,189,248,0.95)");
+  plaque(22, 5, "KITCHEN", "rgba(34,197,94,0.95)");
+  plaque(22, 11, "LOUNGE", "rgba(251,191,36,0.95)");
+  plaque(7, 2, "BOSS ROOM", "rgba(244,114,182,0.95)");
 }
 
 function drawCharacter(
@@ -1542,6 +1863,10 @@ export default function OfficePage() {
 
   const [selected, setSelected] = useState<RosterKey>("friday");
   const selectedLive = live.find((a) => a.key === selected);
+
+  // ambient audio
+  const [muted, setMuted] = useState(true);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -2198,6 +2523,44 @@ export default function OfficePage() {
           </div>
 
           <div ref={containerRef} className="relative flex h-[560px] w-full items-center justify-center overflow-hidden rounded-lg bg-black/40">
+            <audio
+              ref={audioRef}
+              loop
+              muted={muted}
+              preload="none"
+              src="https://cdn.pixabay.com/audio/2024/11/28/audio_3a6a32ffc4.mp3"
+            />
+            <button
+              onClick={() => {
+                const a = audioRef.current;
+                if (!a) return;
+                a.volume = 0.3;
+                const next = !muted;
+                a.muted = next;
+                if (!next) {
+                  // user-initiated play to satisfy autoplay policies
+                  a.play().catch(() => {});
+                }
+                setMuted(next);
+              }}
+              style={{
+                position: "absolute",
+                top: 8,
+                right: 8,
+                zIndex: 10,
+                background: "rgba(0,0,0,0.5)",
+                color: "white",
+                border: "none",
+                borderRadius: 8,
+                padding: "4px 8px",
+                cursor: "pointer",
+                fontSize: 16,
+              }}
+              aria-label={muted ? "Unmute ambient audio" : "Mute ambient audio"}
+              title={muted ? "Unmute" : "Mute"}
+            >
+              {muted ? "🔇" : "🔊"}
+            </button>
             <canvas ref={canvasRef} width={INTERNAL_W} height={INTERNAL_H} className="select-none" style={{ imageRendering: "pixelated" as any }} />
           </div>
 
