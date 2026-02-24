@@ -1464,12 +1464,25 @@ export default function OfficePage() {
               rt.goingToSeat = true;
             }
 
-            if (kind === "coffee") destTile = pickNearbyWalkable(blocked, { tx: 27, ty: 4 }, 3, false);
-            if (kind === "gaming") destTile = pickNearbyWalkable(blocked, { tx: 20, ty: 14 }, 3, false);
-            if (kind === "watching_tv") destTile = pickNearbyWalkable(blocked, { tx: 23, ty: 14 }, 3, false);
+            // ☕ Coffee: stand in front of cooler (28,2) or counter (22,2) or vending (18,2)
+            if (kind === "coffee") {
+              const spots = [{ tx: 28, ty: 4 }, { tx: 22, ty: 3 }, { tx: 20, ty: 4 }];
+              const spot = spots[Math.floor(Math.random() * spots.length)];
+              destTile = pickNearbyWalkable(blocked, spot, 1, false);
+            }
+            // 🎮 Gaming: sit in front of PlayStation (25,13) — face the TV
+            if (kind === "gaming") destTile = pickNearbyWalkable(blocked, { tx: 25, ty: 14 }, 1, false);
+            // 📺 Watch TV: sit on couch (20,15) facing TV at (24,12)
+            if (kind === "watching_tv") destTile = pickNearbyWalkable(blocked, { tx: 20, ty: 14 }, 1, false);
+            // 📖 Reading: stand in front of a bookshelf
             if (kind === "reading") {
-              const base = Math.random() < 0.5 ? { tx: 5, ty: 4 } : { tx: 10, ty: 13 };
-              destTile = pickNearbyWalkable(blocked, base, 3, false);
+              const spots = [
+                { tx: 4, ty: 4 },   // in front of bookshelf (2,2)
+                { tx: 11, ty: 13 }, // in front of bookshelf (11,11)
+                { tx: 26, ty: 14 }, // in front of bookshelf (26,12)
+              ];
+              const spot = spots[Math.floor(Math.random() * spots.length)];
+              destTile = pickNearbyWalkable(blocked, spot, 1, false);
             }
             if (kind === "wandering") destTile = pickRandomWalkable(blocked);
 
@@ -1599,18 +1612,22 @@ export default function OfficePage() {
                 if (rt.activity === "coffee") {
                   bubble = "☕";
                   dur = randBetween(3000, 5000);
+                  rt.dir = "up"; // face the counter/cooler
                 }
                 if (rt.activity === "gaming") {
                   bubble = "🎮";
                   dur = randBetween(5000, 10000);
+                  rt.dir = "up"; // face the TV/PlayStation
                 }
                 if (rt.activity === "watching_tv") {
                   bubble = "📺";
                   dur = randBetween(5000, 9000);
+                  rt.dir = "up"; // face the TV
                 }
                 if (rt.activity === "reading") {
                   bubble = "📖";
                   dur = randBetween(4000, 8000);
+                  rt.dir = "up"; // face the bookshelf
                 }
                 if (rt.activity === "wandering") {
                   bubble = null;
