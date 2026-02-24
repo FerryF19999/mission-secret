@@ -1468,13 +1468,14 @@ export default function OfficePage() {
         rt.x = clamp(rt.x, 8, INTERNAL_W - 8);
         rt.y = clamp(rt.y, 24, INTERNAL_H - 8);
 
-        // stuck detection: if barely moved for 4s, teleport to desk
+        // stuck detection: if barely moved for 2s (walking or idle), teleport to desk
         const movedDist = Math.hypot(rt.x - rt.lastPos.x, rt.y - rt.lastPos.y);
         if (movedDist > 2) {
           rt.lastMoveMs = ms;
           rt.lastPos = { x: rt.x, y: rt.y };
         }
-        if (ms - rt.lastMoveMs > 2000 && rt.anim !== "work" && rt.path.length === 0) {
+        if (ms - rt.lastMoveMs > 2000 && rt.anim !== "work") {
+          // Stuck! Teleport back to desk
           const seat = SEATS[a.key];
           const sp = tileCenter(seat.tx, seat.ty);
           rt.x = sp.x;
@@ -1485,6 +1486,8 @@ export default function OfficePage() {
           rt.lastMoveMs = ms;
           rt.lastPos = { x: rt.x, y: rt.y };
           rt.nextDecisionMs = ms + randBetween(3000, 6000);
+          rt.activityBubble = null;
+          rt.activityUntilMs = 0;
         }
 
         // anim clocks
