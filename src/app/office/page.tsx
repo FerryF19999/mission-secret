@@ -1427,18 +1427,7 @@ export default function OfficePage() {
             rt.nextDecisionMs = ms + randBetween(1200, 3800); // stagger so agents don't sync up
           }
 
-          // if activity target ended up near a doorway, bail to desk
-          if (nearTarget && isNearDoor(rt.x, rt.y)) {
-            const seat = SEATS[a.key];
-            const dest = tileCenter(seat.tx, seat.ty);
-            rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
-            rt.goingToSeat = true;
-            rt.activity = "desk";
-            rt.chatWith = null;
-            rt.activityBubble = null;
-            rt.activityUntilMs = 0;
-            rt.anim = "walk";
-          }
+          // (door-shove removed — agents are allowed to pass through doors freely)
 
           // decide a new idle activity only when we are not already doing one
           if (
