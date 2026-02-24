@@ -62,10 +62,11 @@ type CharacterRuntime = {
 };
 
 const TILE = 16;
-const INTERNAL_W = 960;  // doubled for more detail
-const INTERNAL_H = 640;  // doubled for more detail
-const COLS = INTERNAL_W / TILE; // 60
-const ROWS = INTERNAL_H / TILE; // 40
+// Cozy office size (smaller grid, less warehouse-y)
+const INTERNAL_W = 320; // 20 cols * 16px
+const INTERNAL_H = 240; // 15 rows * 16px
+const COLS = INTERNAL_W / TILE; // 20
+const ROWS = INTERNAL_H / TILE; // 15
 
 const FPS_CAP = 20;
 const FRAME_MS = 1000 / FPS_CAP;
@@ -92,16 +93,17 @@ const ROSTER: Array<{ key: RosterKey; label: string; charIndex: 0 | 1 | 2 | 3 | 
 ];
 
 // Layout splits (tiles)
-const SPLIT_X = 15; // vertical wall between left/right
-const SPLIT_Y = 10; // horizontal wall on right side between kitchen/lounge
+// 20x15 grid: left side = main office + boss room, right side = kitchen + lounge
+const SPLIT_X = 10; // vertical wall between left/right
+const SPLIT_Y = 7;  // horizontal wall on right side between kitchen/lounge
 
 // Doorways (tiles)
-const DOOR_MAIN_RIGHT = { tx: SPLIT_X, ty: 12 };
-const DOOR_KITCHEN_LOUNGE = { tx: 22, ty: SPLIT_Y };
+const DOOR_MAIN_RIGHT = { tx: SPLIT_X, ty: 9 };
+const DOOR_KITCHEN_LOUNGE = { tx: 15, ty: SPLIT_Y };
 
 // We model a small private office area at top-left ("boss room") separated by a wall with a door.
 const BOSS_WALL_Y = SPLIT_Y - 1;
-const DOOR_BOSS = { tx: 7, ty: BOSS_WALL_Y };
+const DOOR_BOSS = { tx: 5, ty: BOSS_WALL_Y };
 
 const DOOR_TILES = [DOOR_BOSS, DOOR_MAIN_RIGHT, DOOR_KITCHEN_LOUNGE];
 
@@ -1311,56 +1313,51 @@ const SITTING_OFFSET_Y = 4; // px: nudge character down into desk when sitting
 
 // Character ABOVE desk, facing DOWN. Desk directly below, centered on char.
 const SEATS: Record<RosterKey, { tx: number; ty: number; face: Dir }> = {
+  // boss room
   yuri: { tx: 4, ty: 3, face: "down" },
-  glass: { tx: 3, ty: 12, face: "down" },
-  epstein: { tx: 8, ty: 12, face: "down" },
-  jarvis: { tx: 3, ty: 16, face: "down" },
-  friday: { tx: 8, ty: 16, face: "down" },
+  // main office (bottom-left)
+  glass: { tx: 2, ty: 9, face: "down" },
+  epstein: { tx: 7, ty: 9, face: "down" },
+  jarvis: { tx: 2, ty: 12, face: "down" },
+  friday: { tx: 7, ty: 12, face: "down" },
 };
 
 // Desk 2x2: placed so character tile is centered on desk top edge
 const DESK_POS: Record<RosterKey, { tx: number; ty: number }> = {
   yuri: { tx: 3, ty: 4 },
-  glass: { tx: 2, ty: 13 },
-  epstein: { tx: 7, ty: 13 },
-  jarvis: { tx: 2, ty: 17 },
-  friday: { tx: 7, ty: 17 },
+  glass: { tx: 1, ty: 10 },
+  epstein: { tx: 6, ty: 10 },
+  jarvis: { tx: 1, ty: 13 },
+  friday: { tx: 6, ty: 13 },
 };
 
 function buildProps(): Prop[] {
   const p: Prop[] = [];
 
-  // boss room (top-left)
+  // boss room (top-left) — compact + cozy
   p.push({ kind: "bookshelf", tx: 2, ty: 2 });
-  // luxury bookshelf decor
   p.push({ kind: "shelfDecor", tx: 2, ty: 2, variant: "globe" });
   p.push({ kind: "shelfDecor", tx: 3, ty: 2, variant: "trophy" });
 
-  p.push({ kind: "plant", tx: 12, ty: 2 });
   p.push({ kind: "plant", tx: 8, ty: 2 });
 
   // keep Yuri's real desk for activities/pathing, but add a visual "executive" desk + chair around it
   p.push({ kind: "execDesk", tx: 2, ty: 4 });
   p.push({ kind: "execChair", tx: 4, ty: 2 });
-  p.push({ kind: "rug", tx: 2, ty: 3 }); // fancy rug under the exec desk area
-  p.push({ kind: "standingLamp", tx: 13, ty: 3 });
-  p.push({ kind: "visitorSeat", tx: 10, ty: 7 });
-  p.push({ kind: "visitorSeat", tx: 12, ty: 7 });
+  p.push({ kind: "rug", tx: 2, ty: 3 });
+  p.push({ kind: "standingLamp", tx: 8, ty: 4 });
+  p.push({ kind: "visitorSeat", tx: 6, ty: 5 });
+  p.push({ kind: "visitorSeat", tx: 7, ty: 5 });
 
-  // gallery wall (boss room)
-  p.push({ kind: "galleryFrame", tx: 5, ty: 1, w: 12, h: 8 });
-  p.push({ kind: "galleryFrame", tx: 7, ty: 1, w: 10, h: 6 });
-  p.push({ kind: "galleryFrame", tx: 9, ty: 1, w: 12, h: 7 });
-  p.push({ kind: "galleryFrame", tx: 11, ty: 2, w: 9, h: 7 });
+  // tiny gallery wall (boss room)
+  p.push({ kind: "galleryFrame", tx: 2, ty: 1, w: 6 * TILE, h: 3 * TILE });
+  p.push({ kind: "painting", tx: 6, ty: 0 });
 
-  // premium art on walls
-  p.push({ kind: "painting", tx: 13, ty: 1 });
-
+  // Yuri desk (functional for seating/pathing)
   p.push({ kind: "desk", tx: DESK_POS.yuri.tx, ty: DESK_POS.yuri.ty, owner: "yuri" });
-  // visual filing cabinet near each workstation (no collision)
   p.push({ kind: "filingCabinet", tx: DESK_POS.yuri.tx + 2, ty: DESK_POS.yuri.ty });
 
-  // main office desks
+  // main office desks (bottom-left)
   p.push({ kind: "desk", tx: DESK_POS.glass.tx, ty: DESK_POS.glass.ty, owner: "glass" });
   p.push({ kind: "filingCabinet", tx: DESK_POS.glass.tx + 2, ty: DESK_POS.glass.ty });
 
@@ -1374,64 +1371,51 @@ function buildProps(): Prop[] {
   p.push({ kind: "filingCabinet", tx: DESK_POS.friday.tx + 2, ty: DESK_POS.friday.ty });
 
   // decor main office
-  p.push({ kind: "bookshelf", tx: 11, ty: 11 });
-  p.push({ kind: "plant", tx: 13, ty: 11 });
-  p.push({ kind: "plant", tx: 13, ty: 18 });
-  p.push({ kind: "plant", tx: 1, ty: 15 });
+  p.push({ kind: "bookshelf", tx: 7, ty: 8 });
+  p.push({ kind: "plant", tx: 1, ty: 8 });
+  p.push({ kind: "plant", tx: 8, ty: 13 });
 
   // plant corner (instagrammable) — cluster, non-blocking
-  p.push({ kind: "plantDeco", tx: 2, ty: 11 });
-  p.push({ kind: "plantDeco", tx: 3, ty: 11 });
-  p.push({ kind: "plantDeco", tx: 2, ty: 12 });
+  p.push({ kind: "plantDeco", tx: 2, ty: 8 });
+  p.push({ kind: "plantDeco", tx: 3, ty: 8 });
+  p.push({ kind: "plantDeco", tx: 2, ty: 9 });
 
-  // entrance lobby / mission control plaque — visual only
-  // Place on an empty wall-band tile between boss room and main office (no overlap with props/agents).
-  p.push({ kind: "plaqueSign", tx: 14, ty: 10, text: "MISSION CONTROL" });
-  p.push({ kind: "plantDeco", tx: 6, ty: 18 });
-  p.push({ kind: "plantDeco", tx: 8, ty: 18 });
+  // mission control plaque — visual only (on the boss-room divider wall)
+  p.push({ kind: "plaqueSign", tx: 1, ty: BOSS_WALL_Y, text: "MISSION CONTROL" });
 
   // main office wall decor + utility
-  p.push({ kind: "whiteboard", tx: 0, ty: 14 });
-  p.push({ kind: "frame", tx: 0, ty: 12 });
-  p.push({ kind: "frame", tx: 14, ty: 12 });
-  p.push({ kind: "trash", tx: 1, ty: 14 });
-  p.push({ kind: "trash", tx: 6, ty: 14 });
-  p.push({ kind: "trash", tx: 1, ty: 18 });
-  p.push({ kind: "trash", tx: 6, ty: 18 });
+  p.push({ kind: "whiteboard", tx: 0, ty: 10 });
+  p.push({ kind: "frame", tx: 0, ty: 8 });
+  p.push({ kind: "trash", tx: 1, ty: 11 });
+  p.push({ kind: "trash", tx: 6, ty: 11 });
 
   // ceiling lights (non-blocking)
-  p.push({ kind: "ceilingLight", tx: 6, ty: 3 });   // boss room
-  p.push({ kind: "ceilingLight", tx: 6, ty: 14 });  // main office
-  p.push({ kind: "ceilingLight", tx: 10, ty: 17 }); // main office
+  p.push({ kind: "ceilingLight", tx: 6, ty: 3 });  // boss room
+  p.push({ kind: "ceilingLight", tx: 4, ty: 11 }); // main office
 
   // kitchen (top-right)
-  p.push({ kind: "vending", tx: 18, ty: 2 });
-  p.push({ kind: "counter", tx: 22, ty: 2 });
-  p.push({ kind: "fridge", tx: 24, ty: 2 });
-  p.push({ kind: "cooler", tx: 28, ty: 2 });
-  p.push({ kind: "waterDispenser", tx: 27, ty: 4 });
-  p.push({ kind: "plant", tx: 25, ty: 2 });
-  p.push({ kind: "coffeeTable", tx: 20, ty: 6 });
-  p.push({ kind: "plant", tx: 17, ty: 7 });
-  p.push({ kind: "ceilingLight", tx: 22, ty: 4 }); // kitchen
-  p.push({ kind: "frame", tx: 19, ty: 0 });
+  p.push({ kind: "vending", tx: 12, ty: 2 });
+  p.push({ kind: "counter", tx: 14, ty: 2 });
+  p.push({ kind: "fridge", tx: 16, ty: 2 });
+  p.push({ kind: "cooler", tx: 18, ty: 2 });
+  p.push({ kind: "waterDispenser", tx: 17, ty: 4 });
+  p.push({ kind: "plant", tx: 11, ty: 5 });
+  p.push({ kind: "coffeeTable", tx: 14, ty: 5 });
+  p.push({ kind: "ceilingLight", tx: 15, ty: 3 });
+  p.push({ kind: "frame", tx: 13, ty: 0 });
 
   // lounge (bottom-right) — TV + PlayStation + couch
-  // Lounge - living room layout: TV on wall, couch facing it, coffee table between
-  p.push({ kind: "tv", tx: 22, ty: 12 });           // TV centered on wall
-  p.push({ kind: "playstation", tx: 22, ty: 13 });  // PS console under TV
-  // Move neon sign to the right side of the lounge wall so it never overlaps the LOUNGE label
-  p.push({ kind: "neonSign", tx: 27, ty: 11, text: "GAME ON" });
-  p.push({ kind: "rug", tx: 20, ty: 14 });          // warm rug under seating
-  p.push({ kind: "coffeeTable", tx: 22, ty: 15 });  // coffee table in front of couch
-  p.push({ kind: "couch", tx: 21, ty: 17 });        // couch facing TV (further back)
-  p.push({ kind: "bookshelf", tx: 27, ty: 12 });    // bookshelf on right wall, out of the way
-  p.push({ kind: "wallClock", tx: 29, ty: 12 });
-  p.push({ kind: "frame", tx: 29, ty: 14 });
-  p.push({ kind: "ceilingLight", tx: 22, ty: 14 });
-  p.push({ kind: "ceilingLight", tx: 26, ty: 16 });
-  p.push({ kind: "plant", tx: 28, ty: 18 });
-  p.push({ kind: "plant", tx: 17, ty: 18 });
+  p.push({ kind: "tv", tx: 14, ty: 9 });
+  p.push({ kind: "playstation", tx: 14, ty: 10 });
+  p.push({ kind: "neonSign", tx: 16, ty: 8, text: "GAME ON" });
+  p.push({ kind: "rug", tx: 13, ty: 11 });
+  p.push({ kind: "coffeeTable", tx: 15, ty: 12 });
+  p.push({ kind: "couch", tx: 12, ty: 13 });
+  p.push({ kind: "bookshelf", tx: 17, ty: 9 });
+  p.push({ kind: "wallClock", tx: 19, ty: 9 });
+  p.push({ kind: "frame", tx: 19, ty: 11 });
+  p.push({ kind: "ceilingLight", tx: 15, ty: 11 });
+  p.push({ kind: "plant", tx: 18, ty: 13 });
 
   return p;
 }
@@ -1668,7 +1652,7 @@ function isPointInCharacter(px: number, py: number, rt: CharacterRuntime) {
 function drawKitchenClock(ctx: CanvasRenderingContext2D) {
   const { hh, mm } = wibNowParts();
   const text = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")} WIB`;
-  const x = 22 * TILE;
+  const x = 15 * TILE;
   const y = 1 * TILE + 10;
   ctx.save();
   ctx.globalAlpha = 0.92;
@@ -2970,7 +2954,7 @@ function drawWorldStatic(
 
   // Kitchen: subway tile grid on top wall section behind counter
   ctx.save();
-  for (let x = 18; x <= 26; x++) {
+  for (let x = 12; x <= 18; x++) {
     ctx.globalAlpha = 0.45;
     ctx.fillStyle = "rgba(255,255,255,0.18)";
     ctx.fillRect(x * TILE, 0, 16, 16);
@@ -2993,7 +2977,7 @@ function drawWorldStatic(
   ctx.save();
   ctx.globalAlpha = 0.65;
   ctx.fillStyle = "rgba(30,41,59,0.8)";
-  ctx.fillRect(20 * TILE, 11 * TILE, 6 * TILE, 4 * TILE);
+  ctx.fillRect(13 * TILE, 8 * TILE, 5 * TILE, 4 * TILE);
   ctx.restore();
 
   // Main office: minimal two-tone stripe on bottom wall area
@@ -3353,9 +3337,10 @@ function drawWorldStatic(
   // Place labels on guaranteed-empty wall tiles (never used by props/agents)
   // - Top rooms: y=0 (outer wall)
   // - Bottom rooms: y=9/10 wall bands (room separators)
-  plaque(2, 9, "MAIN OFFICE", "rgba(56,189,248,0.95)");
-  plaque(23, 0, "KITCHEN", "rgba(34,197,94,0.95)");
-  plaque(17, 10, "LOUNGE", "rgba(251,191,36,0.95)");
+  // Place labels on guaranteed-empty wall tiles
+  plaque(2, BOSS_WALL_Y, "MAIN OFFICE", "rgba(56,189,248,0.95)");
+  plaque(12, 0, "KITCHEN", "rgba(34,197,94,0.95)");
+  plaque(12, SPLIT_Y, "LOUNGE", "rgba(251,191,36,0.95)");
   plaque(2, 0, "BOSS ROOM", "rgba(244,114,182,0.95)");
 }
 
@@ -3822,22 +3807,22 @@ export default function OfficePage() {
             if (kind === "coffee") {
               // ☕ Stand directly at the counter/cooler/vending
               const spots = [
-                { tx: 28, ty: 4 },  // below cooler
-                { tx: 23, ty: 3 },  // below counter
-                { tx: 19, ty: 4 },  // below vending
+                { tx: 18, ty: 4 },  // below cooler
+                { tx: 15, ty: 3 },  // below counter
+                { tx: 13, ty: 4 },  // below vending
               ];
               destTile = spots[Math.floor(Math.random() * spots.length)];
             }
-            // 🎮 Gaming: sit on couch (21,17) and play — face the TV
-            if (kind === "gaming") destTile = { tx: 21, ty: 16 };
+            // 🎮 Gaming: sit on couch and play — face the TV
+            if (kind === "gaming") destTile = { tx: 13, ty: 12 };
             // 📺 Watch TV: also on couch area facing TV
-            if (kind === "watching_tv") destTile = { tx: 22, ty: 16 };
+            if (kind === "watching_tv") destTile = { tx: 14, ty: 12 };
             // 📖 Reading: stand in front of a bookshelf
             if (kind === "reading") {
               const spots = [
-                { tx: 3, ty: 4 },   // in front of bookshelf (2,2)
-                { tx: 11, ty: 13 }, // in front of bookshelf (11,11)
-                { tx: 27, ty: 14 }, // in front of bookshelf (27,12)
+                { tx: 3, ty: 4 },   // in front of boss-room bookshelf (2,2)
+                { tx: 7, ty: 10 },  // in front of main-office bookshelf (7,8)
+                { tx: 17, ty: 11 }, // in front of lounge bookshelf (17,9)
               ];
               const spot = spots[Math.floor(Math.random() * spots.length)];
               destTile = pickNearbyWalkable(blocked, spot, 1, false);
@@ -4175,7 +4160,7 @@ export default function OfficePage() {
         <div className="flex-1 rounded-xl border border-slate-800 bg-slate-900/30 p-3">
           <div className="mb-2 flex items-center justify-between">
             <div className="text-sm font-semibold">Office</div>
-            <div className="text-xs text-slate-300">Canvas 480×320 · 16px tiles · A* pathing · pixel-art props from code</div>
+            <div className="text-xs text-slate-300">Canvas 320×240 · 16px tiles · A* pathing · pixel-art props from code</div>
           </div>
 
           <div ref={containerRef} className="relative flex h-[560px] w-full items-center justify-center overflow-hidden rounded-lg bg-black/40">
