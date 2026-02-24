@@ -249,123 +249,453 @@ function spriteFromPixels(pixels: string[][], scale = 1): Sprite {
   return { canvas, w: canvas.width, h: canvas.height };
 }
 
-function tilePatternSprite(a: string, b: string, accent?: string): Sprite {
-  const px: string[][] = [];
-  for (let y = 0; y < 16; y++) {
-    const row: string[] = [];
-    for (let x = 0; x < 16; x++) {
-      const base = (x + y) % 2 === 0 ? a : b;
-      // add a little texture
-      let c = base;
-      if (accent && (x * 7 + y * 11) % 31 === 0) c = accent;
-      row.push(c);
-    }
-    px.push(row);
+type Pix = string | "";
+
+function makePixels(w: number, h: number, fill: Pix = ""): Pix[][] {
+  return Array.from({ length: h }, () => Array.from({ length: w }, () => fill));
+}
+
+function setPx(px: Pix[][], x: number, y: number, c: Pix) {
+  if (y < 0 || y >= px.length) return;
+  if (x < 0 || x >= (px[0]?.length ?? 0)) return;
+  px[y]![x] = c;
+}
+
+function fillRect(px: Pix[][], x: number, y: number, w: number, h: number, c: Pix) {
+  for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) setPx(px, x + xx, y + yy, c);
+}
+
+function strokeRect(px: Pix[][], x: number, y: number, w: number, h: number, c: Pix) {
+  for (let i = 0; i < w; i++) {
+    setPx(px, x + i, y, c);
+    setPx(px, x + i, y + h - 1, c);
   }
-  return spriteFromPixels(px, 1);
+  for (let j = 0; j < h; j++) {
+    setPx(px, x, y + j, c);
+    setPx(px, x + w - 1, y + j, c);
+  }
+}
+
+function hatchNoise(x: number, y: number) {
+  // deterministic 0..1
+  const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+function woodFloorTileSprite(): Sprite {
+  // 16x16 — warm planks w/ grain + top-left highlight, bottom-right wear
+  const px = makePixels(16, 16, "");
+  const A = "#C89A44"; // mid
+  const B = "#B4832F"; // dark
+  const C = "#D9B05A"; // light
+  const G1 = "#A36F24"; // grain dark
+  const G2 = "#E2BE73"; // grain light
+  const EDGE = "#7A4E12";
+
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      // plank segmentation (irregular widths)
+      const plank = x < 5 ? 0 : x < 10 ? 1 : 2;
+      let base = plank === 1 ? A : B;
+      if (plank === 0) base = (y % 6 < 3) ? A : B;
+      if (plank === 2) base = (y % 7 < 3) ? A : B;
+
+      // subtle lighting gradient: top-left brighter, bottom-right darker
+      const lit = (x + y) < 10;
+      const sh = (x + y) > 22;
+      let c = lit ? C : base;
+      if (sh) c = B;
+
+      // plank seams
+      if (x === 5 || x === 10) c = EDGE;
+      if (y % 8 === 0 && hatchNoise(x, y) > 0.35) c = EDGE;
+
+      // grain lines
+      const n = hatchNoise(x + plank * 13, y * 2);
+      if (n > 0.92) c = G1;
+      if (n < 0.06) c = G2;
+
+      // tiny knots
+      if ((x === 3 && y === 11) || (x === 13 && y === 5)) c = "#8A5B1A";
+
+      px[y]![x] = c;
+    }
+  }
+
+  return spriteFromPixels(px as any, 1);
+}
+
+function kitchenTileSprite(): Sprite {
+  // 16x16 — cream tiles with grout + slight sheen
+  const px = makePixels(16, 16, "");
+  const T0 = "#EEE6D6";
+  const T1 = "#E2D8C6";
+  const HI = "#F7F2E7";
+  const GR = "#CFC4B1";
+
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const gx = x % 4 === 0;
+      const gy = y % 4 === 0;
+      let c = ((x + y) % 2 === 0) ? T0 : T1;
+      if (gx || gy) c = GR;
+
+      // soft specular hits
+      const n = hatchNoise(x * 2, y * 2);
+      if (!gx && !gy && n > 0.96 && x < 10 && y < 10) c = HI;
+
+      px[y]![x] = c;
+    }
+  }
+
+  return spriteFromPixels(px as any, 1);
+}
+
+function carpetTileSprite(): Sprite {
+  // 16x16 — blue weave w/ subtle mottling
+  const px = makePixels(16, 16, "");
+  const B0 = "#5E8EA6";
+  const B1 = "#507F97";
+  const B2 = "#6FA6BD";
+  const D = "#3F667B";
+
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      // weave pattern (checker + diagonals)
+      let c = ((x ^ y) & 1) === 0 ? B0 : B1;
+      if ((x + y) % 7 === 0) c = D;
+      const n = hatchNoise(x * 3, y * 3);
+      if (n > 0.93) c = B2;
+      if (n < 0.05) c = D;
+      px[y]![x] = c;
+    }
+  }
+
+  return spriteFromPixels(px as any, 1);
 }
 
 function wallTileSprite(): Sprite {
-  // slightly textured wall with gentle top highlight (gives depth)
-  const W = PALETTE.wall;
-  const H = PALETTE.wallHi;
-  const EDGE = "#1f1f2a";
-  const px: string[][] = [];
+  // 16x16 — dark navy/charcoal wall w/ panel + depth (top-left light)
+  const px = makePixels(16, 16, "");
+  const BASE = "#2A2E3E";
+  const MID = "#34384B";
+  const HI = "#434862";
+  const LO = "#1D2030";
+  const EDGE = "#111425";
+
   for (let y = 0; y < 16; y++) {
-    const row: string[] = [];
     for (let x = 0; x < 16; x++) {
-      // base tone with subtle vertical gradient
-      let c: string = W;
-      if (y <= 2) c = H;
-      if (y >= 13) c = "#3f3f56";
+      let c = MID;
+      // global lighting
+      if (x + y < 8) c = HI;
+      if (x + y > 22) c = BASE;
 
-      // texture specks
-      const n = (x * 17 + y * 29) % 71;
-      if (n === 0 || n === 1) c = "#636389";
-      if ((x + y) % 11 === 0) c = y < 8 ? H : W;
+      // panel seams (subtle)
+      if (x % 4 === 0) c = BASE;
+      if (y % 6 === 0) c = BASE;
 
-      // tile frame edge
-      if (y === 0 || y === 15 || x === 0 || x === 15) c = EDGE;
-      row.push(c);
+      // occasional brick/panel texture
+      const n = hatchNoise(x * 2, y * 2);
+      if (n > 0.965) c = "#4B5170";
+      if (n < 0.035) c = LO;
+
+      // depth edges
+      if (x === 0 || y === 0) c = EDGE;
+      if (x === 15 || y === 15) c = LO;
+
+      // little top bevel highlight
+      if (y === 1 && x > 1 && x < 14) c = "#4A5070";
+
+      px[y]![x] = c;
     }
-    px.push(row);
   }
-  return spriteFromPixels(px, 1);
+
+  return spriteFromPixels(px as any, 1);
 }
 
 function deskSprite(): Sprite {
-  // 32x32, warm wood, with a subtle front edge highlight
-  const _ = "";
-  const EDGE = "#6B4E0A";
-  const WOOD = "#8B6914";
-  const TOP = "#A07828";
-  const HI = "#B8922E";
-  const px: string[][] = [];
-  for (let y = 0; y < 32; y++) {
-    const row: string[] = [];
-    for (let x = 0; x < 32; x++) {
-      // rounded-ish silhouette
-      const inRect = x >= 1 && x <= 30 && y >= 1 && y <= 26;
-      if (!inRect) {
-        row.push(_);
-        continue;
-      }
-      let c = TOP;
-      if (y === 1 || y === 26 || x === 1 || x === 30) c = WOOD;
-      if (y === 13) c = WOOD;
-      if ((x + y) % 13 === 0) c = HI;
-      if (y === 26) c = EDGE;
-      row.push(c);
+  // 48x32 (3x2 tiles) — dark wood, drawers, grain, top-left light
+  const W = 48;
+  const H = 32;
+  const px = makePixels(W, H, "");
+
+  const OUT = "#2A1A10";
+  const TOP0 = "#7A4B23";
+  const TOP1 = "#8C5A2A";
+  const TOP2 = "#A66D34";
+  const APRON0 = "#5A341A";
+  const APRON1 = "#4A2A16";
+  const G0 = "#6A3E1D";
+  const G1 = "#B97B3C";
+  const MET = "#C9D1DA";
+  const METD = "#8C97A6";
+
+  // body silhouette
+  fillRect(px, 1, 6, W - 2, 22, APRON0);
+  fillRect(px, 1, 4, W - 2, 6, TOP1);
+  strokeRect(px, 1, 4, W - 2, 24, OUT);
+
+  // top bevel highlight (left + top)
+  for (let x = 2; x < W - 3; x++) setPx(px, x, 5, TOP2);
+  for (let y = 5; y < 24; y++) setPx(px, 2, y, TOP2);
+
+  // top surface subtle gradient + grain
+  for (let y = 6; y <= 9; y++) {
+    for (let x = 3; x <= W - 4; x++) {
+      let c = (x + y < 18) ? TOP2 : TOP1;
+      const n = hatchNoise(x * 2, y * 3);
+      if (n > 0.92) c = G1;
+      if (n < 0.07) c = G0;
+      setPx(px, x, y, c);
     }
-    px.push(row);
   }
+
+  // apron shading
+  for (let y = 10; y < 27; y++) {
+    for (let x = 3; x < W - 3; x++) {
+      let c = APRON0;
+      if (x + y > 60) c = APRON1;
+      const n = hatchNoise(x, y);
+      if (n > 0.975) c = "#6B4021";
+      setPx(px, x, y, c);
+    }
+  }
+
+  // drawer block on right
+  const dx0 = 30;
+  fillRect(px, dx0, 12, 15, 12, "#4C2B17");
+  strokeRect(px, dx0, 12, 15, 12, "#2A1A10");
+  // drawer splits
+  for (let x = dx0 + 1; x < dx0 + 14; x++) setPx(px, x, 16, "#2A1A10");
+  for (let x = dx0 + 1; x < dx0 + 14; x++) setPx(px, x, 20, "#2A1A10");
+  // handles
+  for (let x = dx0 + 5; x <= dx0 + 9; x++) {
+    setPx(px, x, 14, METD);
+    setPx(px, x, 18, METD);
+    setPx(px, x, 22, METD);
+  }
+  setPx(px, dx0 + 5, 14, MET);
+  setPx(px, dx0 + 5, 18, MET);
+  setPx(px, dx0 + 5, 22, MET);
+
+  // knee space shadow in middle
+  fillRect(px, 18, 14, 10, 10, "#3A1F12");
+
+  // legs (dark, with light on left)
+  fillRect(px, 4, 24, 6, 7, "#2D1A10");
+  fillRect(px, W - 10, 24, 6, 7, "#2D1A10");
+  for (let y = 24; y < 31; y++) {
+    setPx(px, 4, y, "#3D2416");
+    setPx(px, W - 10, y, "#3D2416");
+  }
+
+
+  return spriteFromPixels(px as any, 1);
+}
+
+function chairSprite(): Sprite {
+  // 16x16 — beige office chair (rounded back), top-left light
+  const px = makePixels(16, 16, "");
+  const OUT = "#3B2C1E";
+  const C0 = "#D9C6A4";
+  const C1 = "#CBB48E";
+  const HI = "#EFE2C8";
+  const SH = "#A88E68";
+  const MET = "#6B7280";
+
+  // backrest
+  fillRect(px, 4, 2, 8, 6, C1);
+  strokeRect(px, 4, 2, 8, 6, OUT);
+  // rounded corners
+  setPx(px, 4, 2, "");
+  setPx(px, 11, 2, "");
+  setPx(px, 4, 7, "");
+  setPx(px, 11, 7, "");
+
+  // seat
+  fillRect(px, 3, 8, 10, 4, C0);
+  strokeRect(px, 3, 8, 10, 4, OUT);
+  // highlight strip
+  for (let x = 4; x <= 11; x++) setPx(px, x, 9, HI);
+  // shadow on right/bottom
+  for (let y = 3; y <= 10; y++) setPx(px, 12, y, SH);
+  for (let x = 4; x <= 11; x++) setPx(px, x, 11, SH);
+
   // legs
-  for (let y = 27; y < 32; y++) {
-    for (let x = 0; x < 32; x++) {
-      const leg = (x >= 2 && x <= 4) || (x >= 27 && x <= 29);
-      if (leg && y <= 29) px[y][x] = EDGE;
-    }
+  fillRect(px, 7, 12, 2, 3, MET);
+  fillRect(px, 5, 14, 6, 1, MET);
+  setPx(px, 5, 14, "#9CA3AF");
+
+  return spriteFromPixels(px as any, 1);
+}
+
+function filingCabinetSprite(): Sprite {
+  // 16x32 — gray metal cabinet w/ reflections, handles
+  const px = makePixels(16, 32, "");
+  const OUT = "#0B1220";
+  const G0 = "#9AA3AF";
+  const G1 = "#CBD5E1";
+  const G2 = "#E2E8F0";
+  const SH = "#64748B";
+
+  fillRect(px, 2, 2, 12, 28, G0);
+  strokeRect(px, 2, 2, 12, 28, OUT);
+
+  // vertical reflection band (top-left light)
+  for (let y = 3; y < 29; y++) {
+    setPx(px, 3, y, G1);
+    if (y % 7 === 0) setPx(px, 4, y, G2);
+    setPx(px, 13, y, SH);
   }
-  return spriteFromPixels(px, 1);
+
+  // drawers (3)
+  const ys = [5, 13, 21];
+  for (const y of ys) {
+    strokeRect(px, 3, y, 10, 7, "#1F2937");
+    // handle
+    fillRect(px, 6, y + 3, 4, 1, "#374151");
+    setPx(px, 6, y + 3, G2);
+  }
+
+  // feet
+  fillRect(px, 3, 30, 3, 1, OUT);
+  fillRect(px, 10, 30, 3, 1, OUT);
+
+  return spriteFromPixels(px as any, 1);
+}
+
+function fridgeSprite(): Sprite {
+  // 16x32 — silver fridge w/ handle + specular highlights
+  const px = makePixels(16, 32, "");
+  const OUT = "#0B1220";
+  const S0 = "#AAB4C3";
+  const S1 = "#D1D5DB";
+  const S2 = "#F1F5F9";
+  const SH = "#6B7280";
+
+  fillRect(px, 2, 1, 12, 30, S0);
+  strokeRect(px, 2, 1, 12, 30, OUT);
+
+  // door split
+  for (let x = 3; x < 13; x++) setPx(px, x, 11, "#374151");
+
+  // reflection band
+  for (let y = 2; y < 30; y++) {
+    setPx(px, 3, y, S1);
+    if (y % 8 === 0) setPx(px, 4, y, S2);
+    setPx(px, 12, y, SH);
+  }
+
+  // handle (right side)
+  fillRect(px, 11, 4, 1, 6, "#475569");
+  fillRect(px, 11, 14, 1, 10, "#475569");
+  setPx(px, 11, 4, S2);
+  setPx(px, 11, 14, S2);
+
+  // small logo dot
+  setPx(px, 6, 6, S2);
+
+  return spriteFromPixels(px as any, 1);
 }
 
 function bookshelfSprite(): Sprite {
-  // 32x32 — warm wood with varied book spines
-  const _ = "";
-  const WOOD = "#7A5C1A";
-  const WOOD_L = "#967028";
-  const EDGE = "#5A3E0A";
-  const SHELF = "#6B4E14";
-  const px: string[][] = [];
-  const books = [
-    ["#CC4444", "#AA3333"], // red
-    ["#4477AA", "#335588"], // blue
-    ["#44AA66", "#338855"], // green
-    ["#CCAA33", "#AA8822"], // yellow
-    ["#9955AA", "#774488"], // purple
-    ["#CC7744", "#AA5533"], // orange
-  ];
-  for (let y = 0; y < 32; y++) {
-    const row: string[] = [];
-    for (let x = 0; x < 32; x++) {
-      // frame
-      if (x === 0 || x === 31) { row.push(EDGE); continue; }
-      if (y === 0 || y === 31) { row.push(EDGE); continue; }
-      if (x === 1 || x === 30) { row.push(WOOD); continue; }
-      // shelves (horizontal planks)
-      if (y === 1 || y === 10 || y === 19 || y === 28) { row.push(SHELF); continue; }
-      if (y === 29 || y === 30) { row.push(WOOD_L); continue; } // base
-      // books — each book is 2-3px wide, full shelf height
-      const shelfZone = y < 10 ? 0 : y < 19 ? 1 : 2;
-      const bookIdx = (Math.floor((x - 2) / 4) + shelfZone * 3) % books.length;
-      const bookPair = books[bookIdx];
-      const inBook = (x - 2) % 4;
-      if (inBook === 0) { row.push("#1a1a2a"); continue; } // gap between books
-      row.push(inBook === 1 ? bookPair[1] : bookPair[0]);
-    }
-    px.push(row);
+  // 32x32 (2x2 tiles) — wooden frame w/ grain, deep shelves, lots of book colors
+  const W = 32;
+  const H = 32;
+  const px = makePixels(W, H, "");
+
+  const OUT = "#1F140C";
+  const WO0 = "#6A431F";
+  const WO1 = "#7D5125";
+  const WO2 = "#97612D";
+  const WO3 = "#B47A3A";
+  const SH0 = "#2A1B11";
+
+  // outer frame
+  fillRect(px, 0, 0, W, H, WO1);
+  strokeRect(px, 0, 0, W, H, OUT);
+  // inner cavity
+  fillRect(px, 2, 2, W - 4, H - 4, SH0);
+
+  // shelves
+  const shelfYs = [10, 19, 28];
+  for (const sy of shelfYs) {
+    fillRect(px, 2, sy, W - 4, 2, WO0);
+    for (let x = 3; x < W - 3; x++) setPx(px, x, sy, WO2);
+    // highlight on left
+    setPx(px, 2, sy, WO3);
+    setPx(px, 2, sy + 1, WO2);
   }
-  return spriteFromPixels(px, 1);
+
+  // vertical frame posts + lighting
+  fillRect(px, 1, 1, 2, H - 2, WO0);
+  fillRect(px, W - 3, 1, 2, H - 2, WO0);
+  for (let y = 2; y < H - 2; y++) {
+    // left highlight, right shadow
+    setPx(px, 1, y, WO3);
+    setPx(px, W - 2, y, WO0);
+  }
+
+  // wood grain on frame
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 0; x < W; x++) {
+      if (x > 2 && x < W - 3 && y > 2 && y < H - 3) continue; // skip cavity
+      const n = hatchNoise(x * 2, y * 2);
+      if (n > 0.975) setPx(px, x, y, WO3);
+      else if (n < 0.02) setPx(px, x, y, WO0);
+    }
+  }
+
+  // books (more variation)
+  const bookColors = [
+    ["#D14B4B", "#A23535", "#F2B8B8"],
+    ["#4B86D1", "#2F5E9F", "#B9D6FF"],
+    ["#4BD17A", "#2E9B55", "#B9FFD4"],
+    ["#E0B43B", "#B88B22", "#FFF1B3"],
+    ["#A46BE0", "#7B47B5", "#EAD6FF"],
+    ["#D17A4B", "#A35633", "#FFD6C4"],
+    ["#46C6D1", "#2A8E99", "#C7F6FF"],
+    ["#D14BC7", "#A23596", "#FFD1F6"],
+  ];
+
+  const shelfBands: Array<{ y0: number; y1: number }> = [
+    { y0: 3, y1: 9 },
+    { y0: 12, y1: 18 },
+    { y0: 21, y1: 27 },
+  ];
+
+  for (let band = 0; band < shelfBands.length; band++) {
+    const { y0, y1 } = shelfBands[band]!;
+    let x = 3;
+    while (x < W - 4) {
+      const w = 2 + (Math.floor(hatchNoise(x * 9, band * 33) * 2)); // 2..3
+      const idx = Math.floor(hatchNoise(x * 11, band * 17) * bookColors.length);
+      const [c0, c1, cHi] = bookColors[idx]!;
+      // gap
+      setPx(px, x - 1, y0, "#0B1220");
+      // book fill
+      for (let yy = y0; yy <= y1; yy++) {
+        for (let xx = 0; xx < w; xx++) {
+          let c = ((xx === 0) ? c1 : c0);
+          // top-left highlight
+          if (yy === y0 && xx > 0 && hatchNoise(xx + x, yy) > 0.55) c = cHi;
+          // bottom-right shade
+          if (yy === y1 && xx === w - 1) c = "#0B1220";
+          setPx(px, x + xx, yy, c);
+        }
+      }
+      // spine label line
+      if (w >= 3) {
+        for (let yy = y0 + 1; yy <= y1 - 1; yy += 2) setPx(px, x + 1, yy, "rgba(255,255,255,0.0)" as any);
+      }
+      // small title dot
+      setPx(px, x + 1, y0 + 2, "#E2E8F0");
+
+      x += w + 1;
+    }
+  }
+
+  return spriteFromPixels(px as any, 1);
 }
 
 function plantSprite(): Sprite {
@@ -401,114 +731,225 @@ function plantSprite(): Sprite {
 }
 
 function vendingSprite(): Sprite {
-  // 32x32
-  const _ = "";
-  const D = "#111827";
-  const M = "#334155";
-  const H = "#475569";
-  const G = "#22c55e";
-  const B = "#38bdf8";
-  const R = "#fb7185";
-  const px: string[][] = Array.from({ length: 32 }, () => Array.from({ length: 32 }, () => _));
-  // body
-  for (let y = 1; y <= 30; y++) {
-    for (let x = 6; x <= 25; x++) px[y][x] = M;
-  }
-  // outline
-  for (let x = 6; x <= 25; x++) {
-    px[1][x] = D;
-    px[30][x] = D;
-  }
-  for (let y = 1; y <= 30; y++) {
-    px[y][6] = D;
-    px[y][25] = D;
-  }
-  // glass window
-  for (let y = 4; y <= 22; y++) {
-    for (let x = 8; x <= 18; x++) px[y][x] = "#0b1220";
-  }
-  for (let y = 5; y <= 21; y++) {
-    for (let x = 9; x <= 17; x++) px[y][x] = (x + y) % 3 === 0 ? "#0f172a" : "#111827";
-  }
-  // snacks
-  const snackCols = [G, B, R, "#f59e0b", "#a78bfa"];
-  for (let i = 0; i < 18; i++) {
-    const x = 9 + (i % 3) * 3;
-    const y = 6 + Math.floor(i / 3) * 3;
-    const c = snackCols[i % snackCols.length];
-    px[y][x] = c;
-    px[y][x + 1] = c;
-  }
-  // keypad
-  for (let y = 8; y <= 20; y++) {
-    for (let x = 20; x <= 23; x++) px[y][x] = H;
-  }
-  px[10][21] = "#e2e8f0";
-  px[12][22] = "#e2e8f0";
-  // slot
-  for (let x = 10; x <= 22; x++) px[26][x] = D;
+  // 32x48 (2x3 tiles) — metallic body, glass, products, reflections
+  const W = 32;
+  const H = 48;
+  const px = makePixels(W, H, "");
 
-  return spriteFromPixels(px, 1);
+  const OUT = "#0B1220";
+  const M0 = "#1F2937";
+  const M1 = "#334155";
+  const M2 = "#475569";
+  const HI = "#E2E8F0";
+  const GL0 = "#0A1628";
+  const GL1 = "#0F253F";
+
+  // body
+  fillRect(px, 3, 1, 26, 46, M1);
+  strokeRect(px, 3, 1, 26, 46, OUT);
+  // metallic gradient strip on left
+  for (let y = 2; y < 46; y++) {
+    setPx(px, 4, y, M2);
+    setPx(px, 5, y, (y % 6 === 0) ? HI : M2);
+  }
+  // darker right edge
+  for (let y = 2; y < 46; y++) setPx(px, 28, y, M0);
+
+  // glass window
+  fillRect(px, 6, 4, 15, 28, GL0);
+  strokeRect(px, 6, 4, 15, 28, OUT);
+  // inner glass pattern + reflections
+  for (let y = 5; y < 31; y++) {
+    for (let x = 7; x < 20; x++) {
+      let c = ((x + y) % 3 === 0) ? GL1 : GL0;
+      if (x < 10 && (y % 7 === 0)) c = "#173A60";
+      setPx(px, x, y, c);
+    }
+  }
+  // reflection streaks
+  for (let y = 6; y < 30; y++) {
+    if (y % 5 === 0) {
+      setPx(px, 8, y, "#4CC9F0");
+      setPx(px, 9, y, "#A5F3FC");
+    }
+  }
+
+  // products in rows
+  const prod = [
+    "#FB7185",
+    "#F59E0B",
+    "#22C55E",
+    "#38BDF8",
+    "#A78BFA",
+    "#F472B6",
+    "#FDE047",
+  ];
+  for (let ry = 0; ry < 5; ry++) {
+    for (let rx = 0; rx < 4; rx++) {
+      const bx = 7 + rx * 3;
+      const by = 7 + ry * 5;
+      const c = prod[(rx + ry * 2) % prod.length]!;
+      // tiny box/item
+      setPx(px, bx, by, c);
+      setPx(px, bx + 1, by, c);
+      setPx(px, bx, by + 1, c);
+      setPx(px, bx + 1, by + 1, c);
+      // highlight
+      setPx(px, bx, by, "#FFFFFF");
+    }
+  }
+  // spiral hints
+  for (let y = 8; y < 30; y += 5) {
+    for (let x = 7; x < 20; x += 3) {
+      setPx(px, x + 1, y + 2, "#111827");
+      setPx(px, x, y + 3, "#111827");
+    }
+  }
+
+  // keypad/coin area
+  fillRect(px, 22, 10, 5, 18, M2);
+  strokeRect(px, 22, 10, 5, 18, OUT);
+  for (let y = 12; y < 26; y += 3) {
+    for (let x = 23; x < 26; x++) setPx(px, x, y, "#CBD5E1");
+  }
+  // display
+  fillRect(px, 23, 7, 3, 2, "#22C55E");
+  setPx(px, 23, 7, "#86EFAC");
+
+  // delivery slot
+  fillRect(px, 8, 36, 16, 6, "#111827");
+  strokeRect(px, 8, 36, 16, 6, OUT);
+  // tray lip highlight
+  for (let x = 9; x < 23; x++) setPx(px, x, 36, "#374151");
+
+  // base feet
+  fillRect(px, 5, 45, 6, 2, OUT);
+  fillRect(px, 21, 45, 6, 2, OUT);
+
+  return spriteFromPixels(px as any, 1);
 }
 
 function couchSprite(): Sprite {
-  // 32x16
-  const _ = "";
-  const S = "#1f2937";
-  const C = "#334155";
-  const H = "#475569";
-  const px: string[][] = Array.from({ length: 16 }, () => Array.from({ length: 32 }, () => _));
-  for (let y = 3; y <= 14; y++) {
-    for (let x = 2; x <= 29; x++) px[y][x] = C;
-  }
-  // back
-  for (let y = 1; y <= 4; y++) for (let x = 2; x <= 29; x++) px[y][x] = H;
+  // 48x32 (3x2 tiles) — cozy fabric w/ seams, cushions, top-left light
+  const W = 48;
+  const H = 32;
+  const px = makePixels(W, H, "");
+
+  const OUT = "#24140F";
+  const F0 = "#4A2A24"; // deep maroon-brown
+  const F1 = "#5C342D";
+  const F2 = "#704038";
+  const HI = "#8A5A4F";
+  const SH = "#2A1613";
+
+  // base + back
+  fillRect(px, 2, 14, W - 4, 14, F1); // seat
+  fillRect(px, 3, 6, W - 6, 10, F2); // back
+  // arms
+  fillRect(px, 2, 10, 6, 18, F0);
+  fillRect(px, W - 8, 10, 6, 18, F0);
+
   // outline
-  for (let x = 2; x <= 29; x++) {
-    px[1][x] = S;
-    px[14][x] = S;
+  strokeRect(px, 2, 6, W - 4, 22, OUT);
+
+  // shading + fabric texture (dither)
+  for (let y = 7; y < 27; y++) {
+    for (let x = 3; x < W - 3; x++) {
+      const cur = px[y]![x];
+      if (!cur) continue;
+      const n = hatchNoise(x * 3, y * 3);
+      let c = cur;
+      if (x + y < 18 && n > 0.4) c = HI; // light
+      if (x + y > 60 && n > 0.35) c = SH; // shadow
+      if (n > 0.985) c = "#9A6B60"; // bright fleck
+      if (n < 0.02) c = "#3B201C"; // dark fleck
+      setPx(px, x, y, c as any);
+    }
   }
-  for (let y = 1; y <= 14; y++) {
-    px[y][2] = S;
-    px[y][29] = S;
+
+  // cushions (3) with seams
+  const cushions = [
+    { x: 9, w: 10 },
+    { x: 19, w: 10 },
+    { x: 29, w: 10 },
+  ];
+  for (const cu of cushions) {
+    fillRect(px, cu.x, 15, cu.w, 9, F2);
+    strokeRect(px, cu.x, 15, cu.w, 9, "#2B1714");
+    // seam curve
+    for (let yy = 17; yy <= 22; yy++) {
+      setPx(px, cu.x + 1, yy, "#2B1714");
+      setPx(px, cu.x + cu.w - 2, yy, "#2B1714");
+    }
+    // highlight patch
+    for (let xx = cu.x + 2; xx < cu.x + cu.w - 2; xx++) setPx(px, xx, 16, HI);
   }
-  // cushions
-  for (let y = 6; y <= 12; y++) {
-    px[y][10] = S;
-    px[y][20] = S;
-  }
-  return spriteFromPixels(px, 1);
+
+  // bottom shadow ridge
+  for (let x = 4; x < W - 4; x++) setPx(px, x, 27, SH);
+
+  // little feet
+  fillRect(px, 6, 28, 4, 2, OUT);
+  fillRect(px, W - 10, 28, 4, 2, OUT);
+
+  return spriteFromPixels(px as any, 1);
 }
 
 function coolerSprite(): Sprite {
-  // 16x32
-  const _ = "";
-  const F = "#cbd5e1";
-  const W = "#93c5fd";
-  const D = "#64748b";
-  const B = "#0f172a";
-  const px: string[][] = Array.from({ length: 32 }, () => Array.from({ length: 16 }, () => _));
-  // bottle
-  for (let y = 1; y <= 10; y++) for (let x = 4; x <= 11; x++) px[y][x] = W;
-  for (let x = 5; x <= 10; x++) px[0 + 1][x] = D;
+  // 16x32 — water bottle w/ translucency + reflections
+  const W = 16;
+  const H = 32;
+  const px = makePixels(W, H, "");
+
+  const OUT = "#1F2937";
+  const BD0 = "#D1D5DB";
+  const BD1 = "#BFC7D2";
+  const BD2 = "#9AA3B2";
+  const GL0 = "#7DD3FC";
+  const GL1 = "#38BDF8";
+  const WTR0 = "#60A5FA";
+  const WTR1 = "#93C5FD";
+
+  // bottle silhouette
+  fillRect(px, 4, 1, 8, 10, GL0);
+  strokeRect(px, 4, 1, 8, 10, OUT);
+  // water inside (lower part darker)
+  for (let y = 4; y <= 9; y++) {
+    for (let x = 5; x <= 10; x++) {
+      let c = y < 7 ? WTR1 : WTR0;
+      const n = hatchNoise(x * 3, y * 3);
+      if (n > 0.93) c = "#A5F3FC";
+      setPx(px, x, y, c);
+    }
+  }
+  // glass reflections
+  for (let y = 2; y <= 9; y++) {
+    if (y % 3 === 0) setPx(px, 5, y, "#E0F2FE");
+    setPx(px, 10, y, GL1);
+  }
+  // cap
+  fillRect(px, 6, 0, 4, 2, "#64748B");
+
   // dispenser body
-  for (let y = 11; y <= 29; y++) for (let x = 3; x <= 12; x++) px[y][x] = F;
-  // outline
-  for (let y = 11; y <= 29; y++) {
-    px[y][3] = D;
-    px[y][12] = D;
+  fillRect(px, 3, 11, 10, 18, BD0);
+  strokeRect(px, 3, 11, 10, 18, OUT);
+  // metallic gradient
+  for (let y = 12; y <= 27; y++) {
+    setPx(px, 4, y, BD1);
+    setPx(px, 5, y, (y % 6 === 0) ? "#F8FAFC" : BD0);
+    setPx(px, 11, y, BD2);
   }
-  for (let x = 3; x <= 12; x++) {
-    px[11][x] = D;
-    px[29][x] = D;
-  }
-  // tap
-  px[18][7] = B;
-  px[19][7] = B;
-  px[20][7] = B;
+
+  // spout + drip tray
+  fillRect(px, 7, 18, 2, 3, OUT);
+  fillRect(px, 6, 22, 4, 2, "#64748B");
+  setPx(px, 6, 22, "#F8FAFC");
+
   // base
-  for (let y = 30; y <= 31; y++) for (let x = 4; x <= 11; x++) px[y][x] = D;
-  return spriteFromPixels(px, 1);
+  fillRect(px, 4, 29, 8, 3, "#475569");
+  strokeRect(px, 4, 29, 8, 3, OUT);
+
+  return spriteFromPixels(px as any, 1);
 }
 
 function paintingSprite(): Sprite {
@@ -610,19 +1051,52 @@ function playstationSprite(): Sprite {
 }
 
 function monitorSprite(): Sprite {
-  // 12x10 monitor facing UP (screen visible from top, toward agent above)
-  const _ = "";
-  const F = "#334155"; // frame
-  const B = "#0b1220"; // screen (dark)
-  const G = "#1a3050"; // screen glow
-  const px: string[][] = Array.from({ length: 10 }, () => Array.from({ length: 12 }, () => _));
-  // stand/base at top (closer to agent)
-  px[0][3] = F; px[0][8] = F;
-  for (let x = 4; x < 8; x++) { px[0][x] = F; px[1][x] = F; }
-  // monitor body (screen faces up = toward agent)
-  for (let y = 2; y < 10; y++) for (let x = 0; x < 12; x++) px[y][x] = F;
-  for (let y = 3; y < 9; y++) for (let x = 1; x < 11; x++) px[y][x] = (x + y) % 5 < 1 ? G : B;
-  return spriteFromPixels(px, 1);
+  // 12x10 — framed monitor w/ bright blue/purple glow + corner highlight
+  const W = 12;
+  const H = 10;
+  const px = makePixels(W, H, "");
+
+  const OUT = "#0B1220";
+  const FR0 = "#263041";
+  const FR1 = "#334155";
+  const ST = "#111827";
+  const S0 = "#0A1022";
+  const G0 = "#38BDF8";
+  const G1 = "#8B5CF6";
+  const G2 = "#C084FC";
+
+  // stand/base (top)
+  fillRect(px, 3, 0, 6, 2, FR1);
+  fillRect(px, 5, 2, 2, 1, ST);
+
+  // body
+  fillRect(px, 0, 2, 12, 8, FR0);
+  strokeRect(px, 0, 2, 12, 8, OUT);
+
+  // screen inset
+  fillRect(px, 1, 3, 10, 6, S0);
+  strokeRect(px, 1, 3, 10, 6, "#111827");
+
+  // glow pixels
+  for (let y = 4; y <= 7; y++) {
+    for (let x = 2; x <= 9; x++) {
+      const n = hatchNoise(x * 4, y * 4);
+      let c = n > 0.55 ? G1 : G0;
+      if (x + y < 8) c = G2;
+      if (n > 0.96) c = "#FFFFFF";
+      setPx(px, x, y, c);
+    }
+  }
+
+  // specular highlight on top-left corner
+  setPx(px, 2, 4, "#FFFFFF");
+  setPx(px, 3, 4, "#E2E8F0");
+
+  // slight dark on bottom-right
+  setPx(px, 10, 8, "#111827");
+  setPx(px, 9, 8, "#111827");
+
+  return spriteFromPixels(px as any, 1);
 }
 
 function whiteboardSprite(): Sprite {
@@ -787,6 +1261,8 @@ type FloorKind = "wood" | "beige" | "carpet";
 
 type Prop =
   | { kind: "desk"; tx: number; ty: number; owner?: RosterKey }
+  | { kind: "filingCabinet"; tx: number; ty: number }
+  | { kind: "fridge"; tx: number; ty: number }
   | { kind: "bookshelf"; tx: number; ty: number }
   | { kind: "plant"; tx: number; ty: number }
   | { kind: "plantDeco"; tx: number; ty: number }
@@ -881,12 +1357,21 @@ function buildProps(): Prop[] {
   p.push({ kind: "painting", tx: 13, ty: 1 });
 
   p.push({ kind: "desk", tx: DESK_POS.yuri.tx, ty: DESK_POS.yuri.ty, owner: "yuri" });
+  // visual filing cabinet near each workstation (no collision)
+  p.push({ kind: "filingCabinet", tx: DESK_POS.yuri.tx + 2, ty: DESK_POS.yuri.ty });
 
   // main office desks
   p.push({ kind: "desk", tx: DESK_POS.glass.tx, ty: DESK_POS.glass.ty, owner: "glass" });
+  p.push({ kind: "filingCabinet", tx: DESK_POS.glass.tx + 2, ty: DESK_POS.glass.ty });
+
   p.push({ kind: "desk", tx: DESK_POS.epstein.tx, ty: DESK_POS.epstein.ty, owner: "epstein" });
+  p.push({ kind: "filingCabinet", tx: DESK_POS.epstein.tx + 2, ty: DESK_POS.epstein.ty });
+
   p.push({ kind: "desk", tx: DESK_POS.jarvis.tx, ty: DESK_POS.jarvis.ty, owner: "jarvis" });
+  p.push({ kind: "filingCabinet", tx: DESK_POS.jarvis.tx + 2, ty: DESK_POS.jarvis.ty });
+
   p.push({ kind: "desk", tx: DESK_POS.friday.tx, ty: DESK_POS.friday.ty, owner: "friday" });
+  p.push({ kind: "filingCabinet", tx: DESK_POS.friday.tx + 2, ty: DESK_POS.friday.ty });
 
   // decor main office
   p.push({ kind: "bookshelf", tx: 11, ty: 11 });
@@ -921,6 +1406,7 @@ function buildProps(): Prop[] {
   // kitchen (top-right)
   p.push({ kind: "vending", tx: 18, ty: 2 });
   p.push({ kind: "counter", tx: 22, ty: 2 });
+  p.push({ kind: "fridge", tx: 24, ty: 2 });
   p.push({ kind: "cooler", tx: 28, ty: 2 });
   p.push({ kind: "waterDispenser", tx: 27, ty: 4 });
   p.push({ kind: "plant", tx: 25, ty: 2 });
@@ -1204,6 +1690,9 @@ type Sprites = {
   floorCarpet: Sprite;
   wall: Sprite;
   desk: Sprite;
+  chair: Sprite;
+  filingCabinet: Sprite;
+  fridge: Sprite;
   bookshelf: Sprite;
   plant: Sprite;
   vending: Sprite;
@@ -1226,11 +1715,14 @@ type Sprites = {
 
 function buildSprites(): Sprites {
   return {
-    floorWood: tilePatternSprite(PALETTE.woodA, PALETTE.woodB, "#d4a848"),
-    floorBeige: tilePatternSprite(PALETTE.beigeA, PALETTE.beigeB, "#f0e8d8"),
-    floorCarpet: tilePatternSprite(PALETTE.carpetA, PALETTE.carpetB, "#7cb8cc"),
+    floorWood: woodFloorTileSprite(),
+    floorBeige: kitchenTileSprite(),
+    floorCarpet: carpetTileSprite(),
     wall: wallTileSprite(),
     desk: deskSprite(),
+    chair: chairSprite(),
+    filingCabinet: filingCabinetSprite(),
+    fridge: fridgeSprite(),
     bookshelf: bookshelfSprite(),
     plant: plantSprite(),
     vending: vendingSprite(),
@@ -1472,6 +1964,53 @@ function drawWorld(
     ctx.drawImage(spr.canvas, tx * TILE, ty * TILE);
   };
 
+  // furniture shadows (subtle, consistent light from top-left)
+  for (const pr of props) {
+    const x = pr.tx * TILE;
+    const y = pr.ty * TILE;
+    let w = 16;
+    let h = 10;
+    let ox = 2;
+    let oy = 10;
+
+    if (pr.kind === "desk") { w = 48; h = 16; ox = 6; oy = 18; }
+    if (pr.kind === "bookshelf") { w = 32; h = 14; ox = 4; oy = 18; }
+    if (pr.kind === "vending") { w = 32; h = 16; ox = 6; oy = 30; }
+    if (pr.kind === "couch") { w = 48; h = 16; ox = 8; oy = 22; }
+    if (pr.kind === "cooler" || pr.kind === "waterDispenser" || pr.kind === "fridge") { w = 16; h = 12; ox = 4; oy = 20; }
+    if (pr.kind === "coffeeTable" || pr.kind === "trash" || pr.kind === "plant" || pr.kind === "plantDeco" || pr.kind === "playstation") { w = 16; h = 9; ox = 4; oy = 10; }
+    if (pr.kind === "counter") { w = 32; h = 10; ox = 6; oy = 12; }
+    if (pr.kind === "filingCabinet") { w = 16; h = 12; ox = 4; oy = 20; }
+
+    // only cast shadow for floor-standing props
+    const casts = [
+      "desk",
+      "bookshelf",
+      "plant",
+      "plantDeco",
+      "vending",
+      "couch",
+      "cooler",
+      "waterDispenser",
+      "fridge",
+      "trash",
+      "coffeeTable",
+      "counter",
+      "playstation",
+      "filingCabinet",
+    ].includes(pr.kind as any);
+
+    if (!casts) continue;
+
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = "rgba(2,6,23,0.9)";
+    ctx.beginPath();
+    ctx.ellipse(x + ox + w / 2, y + oy + h / 2, w / 2, h / 2.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   // rugs first (sit under furniture)
   for (const pr of props) {
     if (pr.kind === "rug") drawAt(sprites.rug, pr.tx, pr.ty);
@@ -1517,10 +2056,16 @@ function drawWorld(
       ctx.restore();
     }
 
-    if (pr.kind === "desk") drawAt(sprites.desk, pr.tx, pr.ty);
+    if (pr.kind === "desk") {
+      // chair sits behind desk (except boss desk which has its own exec chair)
+      if (pr.owner !== "yuri") drawAt(sprites.chair, pr.tx + 1, pr.ty - 1);
+      drawAt(sprites.desk, pr.tx, pr.ty);
+    }
+    if (pr.kind === "filingCabinet") drawAt(sprites.filingCabinet, pr.tx, pr.ty);
     if (pr.kind === "bookshelf") drawAt(sprites.bookshelf, pr.tx, pr.ty);
     if (pr.kind === "vending") drawAt(sprites.vending, pr.tx, pr.ty);
     if (pr.kind === "couch") drawAt(sprites.couch, pr.tx, pr.ty);
+    if (pr.kind === "fridge") drawAt(sprites.fridge, pr.tx, pr.ty);
     if (pr.kind === "cooler") drawAt(sprites.cooler, pr.tx, pr.ty);
     if (pr.kind === "waterDispenser") drawAt(sprites.waterDispenser, pr.tx, pr.ty);
     if (pr.kind === "coffeeTable") drawAt(sprites.coffeeTable, pr.tx, pr.ty);
