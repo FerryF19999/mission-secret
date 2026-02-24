@@ -71,15 +71,15 @@ const FPS_CAP = 20;
 const FRAME_MS = 1000 / FPS_CAP;
 
 const PALETTE = {
-  woodA: "#A07828",
-  woodB: "#8B6914",
-  beigeA: "#D4C4A0",
-  beigeB: "#C4B490",
-  carpetA: "#4A6B7A",
-  carpetB: "#3D5A68",
-  wall: "#2D2D3D",
-  wallHi: "#3A3A52",
-  ink: "#0b1020",
+  woodA: "#C89840",
+  woodB: "#B08530",
+  beigeA: "#E8DCC0",
+  beigeB: "#DDD0B0",
+  carpetA: "#6A9AAE",
+  carpetB: "#5888A0",
+  wall: "#4A4A60",
+  wallHi: "#5C5C78",
+  ink: "#1a2030",
   uiText: "#e2e8f0",
 } as const;
 
@@ -163,14 +163,14 @@ function wibNowParts(date = new Date()) {
 }
 
 function dayNightAlpha(hh: number) {
-  // brighter midday, darker nights
+  // very bright office — minimal overlay
   if (hh >= 6 && hh <= 17) {
-    const t = Math.abs(12 - hh) / 6; // 0..1
-    return 0.06 + t * 0.12;
+    return 0.0; // no overlay during daytime
   }
+  // gentle evening/night tint
   const dist = hh >= 18 ? hh - 18 : hh + 6; // 0..11
   const t = clamp(dist / 11, 0, 1);
-  return 0.28 + t * 0.16;
+  return 0.05 + t * 0.10; // max 0.15 at darkest
 }
 
 function isNearDoor(px: number, py: number, radiusTiles = 1.5) {
@@ -943,9 +943,9 @@ type Sprites = {
 
 function buildSprites(): Sprites {
   return {
-    floorWood: tilePatternSprite(PALETTE.woodA, PALETTE.woodB, "#b8922e"),
-    floorBeige: tilePatternSprite(PALETTE.beigeA, PALETTE.beigeB, "#e8ddc3"),
-    floorCarpet: tilePatternSprite(PALETTE.carpetA, PALETTE.carpetB, "#5aa3b7"),
+    floorWood: tilePatternSprite(PALETTE.woodA, PALETTE.woodB, "#d4a848"),
+    floorBeige: tilePatternSprite(PALETTE.beigeA, PALETTE.beigeB, "#f0e8d8"),
+    floorCarpet: tilePatternSprite(PALETTE.carpetA, PALETTE.carpetB, "#7cb8cc"),
     wall: wallTileSprite(),
     desk: deskSprite(),
     bookshelf: bookshelfSprite(),
