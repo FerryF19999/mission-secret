@@ -1317,22 +1317,23 @@ const SEATS: Record<RosterKey, { tx: number; ty: number; face: Dir }> = {
   yuri: { tx: 4, ty: 3, face: "down" },
 
   // main office (bottom-left)
-  // Keep two clear desk rows with a wider center aisle.
-  glass: { tx: 2, ty: 9, face: "down" },
-  epstein: { tx: 8, ty: 9, face: "down" },
-  jarvis: { tx: 2, ty: 12, face: "down" },
-  friday: { tx: 8, ty: 12, face: "down" },
+  // Two desk rows (top+bottom) with a clear middle aisle and extra breathing room to the walls.
+  glass: { tx: 2, ty: 8, face: "down" },
+  epstein: { tx: 7, ty: 8, face: "down" },
+  jarvis: { tx: 2, ty: 11, face: "down" },
+  friday: { tx: 7, ty: 11, face: "down" },
 };
 
 // Desk 2x2: placed so character tile is centered on desk top edge
 const DESK_POS: Record<RosterKey, { tx: number; ty: number }> = {
   yuri: { tx: 3, ty: 4 },
 
-  // Spread desks horizontally to avoid overlaps with utility props and to create a clean aisle.
-  glass: { tx: 1, ty: 10 },
-  epstein: { tx: 7, ty: 10 },
-  jarvis: { tx: 1, ty: 13 },
-  friday: { tx: 7, ty: 13 },
+  // Spread desks: 2 on the upper row, 2 on the lower row, with a clear center aisle.
+  // Keep a buffer from the bottom wall (y=14) so the scene doesn't feel cramped.
+  glass: { tx: 1, ty: 9 },
+  epstein: { tx: 6, ty: 9 },
+  jarvis: { tx: 1, ty: 12 },
+  friday: { tx: 6, ty: 12 },
 };
 
 function buildProps(): Prop[] {
@@ -1375,17 +1376,17 @@ function buildProps(): Prop[] {
   p.push({ kind: "desk", tx: DESK_POS.friday.tx, ty: DESK_POS.friday.ty, owner: "friday" });
   p.push({ kind: "filingCabinet", tx: DESK_POS.friday.tx + 2, ty: DESK_POS.friday.ty });
 
-  // decor main office
-  p.push({ kind: "bookshelf", tx: 7, ty: 8 });
-  p.push({ kind: "plant", tx: 1, ty: 8 });
-  // keep plants away from desk-side filing cabinets
-  p.push({ kind: "plant", tx: 4, ty: 13 });
+  // decor main office — keep the central aisles open
+  p.push({ kind: "bookshelf", tx: 8, ty: 8 });
+  p.push({ kind: "plant", tx: 1, ty: 7 });
+  // plants kept to the perimeter so desk approaches stay clean
+  p.push({ kind: "plant", tx: 4, ty: 7 });
 
   // plant corner (instagrammable) — cluster, non-blocking
-  // moved off the main desk approach tiles so it doesn't visually crowd/overlap seats.
-  p.push({ kind: "plantDeco", tx: 4, ty: 8 });
-  p.push({ kind: "plantDeco", tx: 5, ty: 8 });
-  p.push({ kind: "plantDeco", tx: 4, ty: 9 });
+  // keep it tucked to the bottom-right of the main office so it doesn't crowd the desks.
+  p.push({ kind: "plantDeco", tx: 8, ty: 12 });
+  p.push({ kind: "plantDeco", tx: 9, ty: 12 });
+  p.push({ kind: "plantDeco", tx: 8, ty: 13 });
 
   // mission control plaque — visual only (on the boss-room divider wall)
   p.push({ kind: "plaqueSign", tx: 1, ty: BOSS_WALL_Y, text: "MISSION CONTROL" });
@@ -3898,7 +3899,7 @@ export default function OfficePage() {
             if (kind === "reading") {
               const spots = [
                 { tx: 3, ty: 4 },   // in front of boss-room bookshelf (2,2)
-                { tx: 7, ty: 10 },  // in front of main-office bookshelf (7,8)
+                { tx: 8, ty: 10 },  // in front of main-office bookshelf (8,8)
                 { tx: 17, ty: 11 }, // in front of lounge bookshelf (17,9)
               ];
               const spot = spots[Math.floor(Math.random() * spots.length)];
