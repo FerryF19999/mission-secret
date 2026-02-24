@@ -2812,13 +2812,11 @@ function drawWallClock(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.restore();
 }
 
-function drawWorld(
+function drawWorldStatic(
   ctx: CanvasRenderingContext2D,
   sprites: Sprites,
   floor: FloorKind[][],
-  props: Prop[],
-  live: LiveAgent[],
-  ms: number
+  props: Prop[]
 ) {
   // floors (canvas API — richer detail than 16x16 pixel sprites)
   for (let r = 0; r < ROWS; r++) {
@@ -3191,7 +3189,7 @@ function drawWorld(
     if (pr.kind === "painting") drawPainting(ctx, pr.tx * TILE, pr.ty * TILE);
     if (pr.kind === "whiteboard") drawAt(sprites.whiteboard, pr.tx, pr.ty);
     if (pr.kind === "frame") drawAt(sprites.frame, pr.tx, pr.ty);
-    if (pr.kind === "wallClock") drawWallClock(ctx, pr.tx * TILE, pr.ty * TILE);
+    // wallClock is dynamic (hands move) and is drawn in drawWorldDynamic()
     if (pr.kind === "ceilingLight") drawAt(sprites.ceilingLight, pr.tx, pr.ty);
 
     if (pr.kind === "galleryFrame") {
@@ -3324,43 +3322,7 @@ function drawWorld(
     ctx.restore();
   }
 
-  // monitors (glow when active/busy)
-  const liveBy = new Map(live.map((a) => [a.key, a] as const));
-  for (const pr of props) {
-    if (pr.kind !== "desk" || !pr.owner) continue;
-    const a = liveBy.get(pr.owner);
-    const on = a && (a.status === "active" || a.status === "busy");
-
-    // place monitor centered on character's tile (top of desk)
-    const seat = SEATS[pr.owner];
-    const px = seat.tx * TILE + 2; // center 12px monitor on 16px tile
-    const py = pr.ty * TILE + 2;   // top of desk tile
-
-    if (on) {
-      ctx.save();
-      ctx.globalAlpha = 0.22;
-      ctx.fillStyle = "rgba(56,189,248,1)";
-      ctx.fillRect(px - 3, py - 3, 18, 14);
-      ctx.restore();
-    }
-
-    ctx.drawImage(sprites.monitor.canvas, px, py);
-
-    if (on) {
-      // tiny scrolling code
-      const t = (ms / 1000) * (a.status === "busy" ? 2.0 : 1.0);
-      const off = Math.floor(t * 6) % 12;
-      ctx.save();
-      ctx.globalAlpha = 0.9;
-      for (let i = 0; i < 5; i++) {
-        const yy = py + 2 + i;
-        const w = 2 + ((i * 7 + off) % 8);
-        ctx.fillStyle = i % 2 ? "rgba(226,232,240,0.75)" : "rgba(34,197,94,0.75)";
-        ctx.fillRect(px + 2, yy, w, 1);
-      }
-      ctx.restore();
-    }
-  }
+  // monitors are dynamic (online glow + scrolling code) and are drawn in drawWorldDynamic()
 
   // stylish room plaques
   const plaque = (tx: number, ty: number, text: string, accent: string) => {
@@ -3395,6 +3357,65 @@ function drawWorld(
   plaque(23, 0, "KITCHEN", "rgba(34,197,94,0.95)");
   plaque(17, 10, "LOUNGE", "rgba(251,191,36,0.95)");
   plaque(2, 0, "BOSS ROOM", "rgba(244,114,182,0.95)");
+}
+
+function drawWorldDynamic(
+  ctx: CanvasRenderingContext2D,
+  sprites: Sprites,
+  props: Prop[],
+  live: LiveAgent[],
+  ms: number
+) {
+  // monitors (glow + tiny scrolling code when active/busy)
+  const liveBy = new Map(live.map((a) => [a.key, a] as const));
+  for (const pr of props) {
+    if (pr.kind !== "desk" || !pr.owner) continue;
+    const a = liveBy.get(pr.owner);
+    const on = a && (a.status === "active" || a.status === "busy");
+
+    const seat = SEATS[pr.owner];
+    const px = seat.tx * TILE + 2;
+    const py = pr.ty * TILE + 2;
+
+    if (on) {
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      ctx.fillStyle = "rgba(56,189,248,1)";
+      ctx.fillRect(px - 3, py - 3, 18, 14);
+      ctx.restore();
+    }
+
+    ctx.drawImage(sprites.monitor.canvas, px, py);
+
+    if (on && a) {
+      const t = (ms / 1000) * (a.status === "busy" ? 2.0 : 1.0);
+      const off = Math.floor(t * 6) % 12;
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      for (let i = 0; i < 5; i++) {
+        const yy = py + 2 + i;
+        const w = 2 + ((i * 7 + off) % 8);
+        ctx.fillStyle = i % 2 ? "rgba(226,232,240,0.75)" : "rgba(34,197,94,0.75)";
+        ctx.fillRect(px + 2, yy, w, 1);
+      }
+      ctx.restore();
+    }
+  }
+
+  // wall clocks (hands depend on current time)
+  for (const pr of props) {
+    if (pr.kind === "wallClock") drawWallClock(ctx, pr.tx * TILE, pr.ty * TILE);
+  }
+}
+
+function buildStaticLayer(sprites: Sprites, floor: FloorKind[][], props: Prop[]) {
+  const canvas = document.createElement("canvas");
+  canvas.width = INTERNAL_W;
+  canvas.height = INTERNAL_H;
+  const ctx = canvas.getContext("2d", { alpha: true })!;
+  ctx.imageSmoothingEnabled = false;
+  drawWorldStatic(ctx, sprites, floor, props);
+  return canvas;
 }
 
 function drawCharacter(
@@ -3494,6 +3515,7 @@ export default function OfficePage() {
 
   const spritesRef = useRef<Sprites | null>(null);
   const charImgsRef = useRef<Record<RosterKey, HTMLImageElement> | null>(null);
+  const staticLayerRef = useRef<HTMLCanvasElement | null>(null);
 
   const floor = useMemo(() => buildFloor(), []);
   const props = useMemo(() => buildProps(), []);
@@ -3628,6 +3650,9 @@ export default function OfficePage() {
     const ctx = canvas.getContext("2d", { alpha: true })!;
     ctx.imageSmoothingEnabled = false;
 
+    // Background is static; cache it to avoid redrawing every tile every frame.
+    staticLayerRef.current = null;
+
     const tick = (ms: number) => {
       rafRef.current = requestAnimationFrame(tick);
       if (ms - (lastFrameRef.current || 0) < FRAME_MS) return;
@@ -3637,7 +3662,7 @@ export default function OfficePage() {
       lastTickRef.current = ms;
       lastFrameRef.current = ms;
 
-      ctx.clearRect(0, 0, INTERNAL_W, INTERNAL_H);
+      // (background drawn from cached layer)
 
       const sprites = spritesRef.current;
       const charImgs = charImgsRef.current;
@@ -3649,6 +3674,12 @@ export default function OfficePage() {
         ctx.fillText("Loading pixel office…", 12, 20);
         return;
       }
+
+      if (!staticLayerRef.current) {
+        staticLayerRef.current = buildStaticLayer(sprites, floor, props);
+      }
+      // Draw cached background
+      ctx.drawImage(staticLayerRef.current, 0, 0);
 
       // running set
       const runningSet = new Set<RosterKey>();
@@ -4039,8 +4070,8 @@ export default function OfficePage() {
         }
       }
 
-      // draw world
-      drawWorld(ctx, sprites, floor, props, live, ms);
+      // dynamic overlays (monitors, wall clocks)
+      drawWorldDynamic(ctx, sprites, props, live, ms);
       drawKitchenClock(ctx);
       drawDustMotes(ctx, props, ms);
 
