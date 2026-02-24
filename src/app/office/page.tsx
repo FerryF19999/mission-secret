@@ -676,21 +676,21 @@ function buildBlocked(props: Prop[]) {
     blocked[y][COLS - 1] = true;
   }
 
-  // main vertical wall split
+  // main vertical wall split (3-tile wide door)
   for (let y = 0; y < ROWS; y++) {
-    if (y === DOOR_MAIN_RIGHT.ty) continue;
+    if (Math.abs(y - DOOR_MAIN_RIGHT.ty) <= 1) continue; // 3-tile door
     blocked[y][SPLIT_X] = true;
   }
 
-  // right horizontal split
+  // right horizontal split (3-tile wide door)
   for (let x = SPLIT_X; x < COLS; x++) {
-    if (x === DOOR_KITCHEN_LOUNGE.tx) continue;
+    if (Math.abs(x - DOOR_KITCHEN_LOUNGE.tx) <= 1) continue; // 3-tile door
     blocked[SPLIT_Y][x] = true;
   }
 
-  // boss room separation wall (horizontal)
+  // boss room separation wall (3-tile wide door)
   for (let x = 0; x < SPLIT_X; x++) {
-    if (x === DOOR_BOSS.tx) continue;
+    if (Math.abs(x - DOOR_BOSS.tx) <= 1) continue; // 3-tile door
     blocked[BOSS_WALL_Y][x] = true;
   }
 
@@ -929,15 +929,15 @@ function drawWorld(
     wall(COLS - 1, y);
   }
   for (let y = 0; y < ROWS; y++) {
-    if (y === DOOR_MAIN_RIGHT.ty) continue;
+    if (Math.abs(y - DOOR_MAIN_RIGHT.ty) <= 1) continue;
     wall(SPLIT_X, y);
   }
   for (let x = SPLIT_X; x < COLS; x++) {
-    if (x === DOOR_KITCHEN_LOUNGE.tx) continue;
+    if (Math.abs(x - DOOR_KITCHEN_LOUNGE.tx) <= 1) continue;
     wall(x, SPLIT_Y);
   }
   for (let x = 0; x < SPLIT_X; x++) {
-    if (x === DOOR_BOSS.tx) continue;
+    if (Math.abs(x - DOOR_BOSS.tx) <= 1) continue;
     wall(x, BOSS_WALL_Y);
   }
   // boss room enclosure
