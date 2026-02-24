@@ -474,16 +474,17 @@ function buildFloor(): FloorKind[][] {
   return map;
 }
 
-const SITTING_OFFSET_Y = -10; // px: draw character higher when sitting at desk
+const SITTING_OFFSET_Y = 6; // px: draw character lower (into desk) when sitting — seat is above desk
 
 const SEATS: Record<RosterKey, { tx: number; ty: number; face: Dir }> = {
-  // boss room — desk at (3,4) is 2x2 covering rows 4-5, seat at row 6
-  yuri: { tx: 4, ty: 6, face: "up" },
-  // main office desks — desks at row 12/16, seats 1 row below desk bottom
-  glass: { tx: 3, ty: 14, face: "up" },
-  epstein: { tx: 8, ty: 14, face: "up" },
-  jarvis: { tx: 3, ty: 18, face: "up" },
-  friday: { tx: 8, ty: 18, face: "up" },
+  // Seat ABOVE desk, facing DOWN toward it (so you see the character's face typing)
+  // boss room — desk at (3,4), seat at row 3
+  yuri: { tx: 4, ty: 3, face: "down" },
+  // main office — desks at row 12/16, seats 1 row above desk top
+  glass: { tx: 3, ty: 11, face: "down" },
+  epstein: { tx: 8, ty: 11, face: "down" },
+  jarvis: { tx: 3, ty: 15, face: "down" },
+  friday: { tx: 8, ty: 15, face: "down" },
 };
 
 const DESK_POS: Record<RosterKey, { tx: number; ty: number }> = {
