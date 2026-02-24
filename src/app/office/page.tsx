@@ -1353,64 +1353,13 @@ export default function OfficePage() {
           }
 
           if (rt.path.length === 0 && (rt.nextDecisionMs === 0 || ms >= rt.nextDecisionMs) && nearTarget) {
-            const roll = Math.random();
-            if (roll < 0.35) {
-              // Go back to desk
-              const seat = SEATS[a.key];
-              const dest = tileCenter(seat.tx, seat.ty);
-              rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
-              rt.goingToSeat = true;
-              rt.anim = rt.path.length ? "walk" : "idle";
-              rt.nextDecisionMs = ms + randBetween(5000, 10000);
-            } else {
-              // Wander to interesting destinations
-              const allDests: Array<{ tx: number; ty: number; act?: string; stay: number }> = [
-                // lounge
-                { tx: 21, ty: 16, act: "📺", stay: 10000 },
-                { tx: 20, ty: 16, act: "📺", stay: 10000 },
-                { tx: 19, ty: 17, act: "🎮", stay: 10000 },
-                // kitchen
-                { tx: 20, ty: 5, act: "🍫", stay: 7000 },
-                { tx: 24, ty: 5, act: "☕", stay: 7000 },
-                { tx: 27, ty: 5, act: "💧", stay: 5000 },
-                // office wander (safe spots away from walls)
-                { tx: 6, ty: 14, stay: 4000 },
-                { tx: 5, ty: 18, stay: 4000 },
-                { tx: 10, ty: 16, stay: 4000 },
-                { tx: 6, ty: 11, stay: 4000 },
-              ];
-
-              // Shuffle and try each until A* succeeds
-              const shuffled = allDests.sort(() => Math.random() - 0.5);
-              let found = false;
-              for (const dest of shuffled) {
-                // Skip if destination tile is blocked
-                if (dest.tx >= 0 && dest.tx < COLS && dest.ty >= 0 && dest.ty < ROWS && blocked[dest.ty][dest.tx]) continue;
-                const target = tileCenter(dest.tx, dest.ty);
-                const path = aStar(blocked, { x: rt.x, y: rt.y }, target);
-                if (path.length > 0) {
-                  rt.path = path;
-                  rt.goingToSeat = false;
-                  rt.anim = "walk";
-                  if (dest.act) {
-                    rt.activityBubble = dest.act;
-                    rt.activityUntilMs = ms + dest.stay + randBetween(2000, 5000);
-                  }
-                  rt.nextDecisionMs = ms + dest.stay + randBetween(2000, 5000);
-                  found = true;
-                  break;
-                }
-              }
-              // If no valid destination found, go back to desk
-              if (!found) {
-                const seat = SEATS[a.key];
-                const dest = tileCenter(seat.tx, seat.ty);
-                rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
-                rt.goingToSeat = true;
-                rt.anim = rt.path.length ? "walk" : "idle";
-                rt.nextDecisionMs = ms + randBetween(5000, 10000);
-              }
-            }
+            // Simple: always go back to desk when idle
+            const seat = SEATS[a.key];
+            const dest = tileCenter(seat.tx, seat.ty);
+            rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
+            rt.goingToSeat = true;
+            rt.anim = rt.path.length ? "walk" : "idle";
+            rt.nextDecisionMs = ms + randBetween(8000, 15000);
           }
 
           // if at own seat and not moving, face down (desk)
@@ -1468,26 +1417,11 @@ export default function OfficePage() {
         rt.x = clamp(rt.x, 8, INTERNAL_W - 8);
         rt.y = clamp(rt.y, 24, INTERNAL_H - 8);
 
-        // stuck detection: if barely moved for 2s (walking or idle), teleport to desk
+        // Track movement
         const movedDist = Math.hypot(rt.x - rt.lastPos.x, rt.y - rt.lastPos.y);
         if (movedDist > 2) {
           rt.lastMoveMs = ms;
           rt.lastPos = { x: rt.x, y: rt.y };
-        }
-        if (ms - rt.lastMoveMs > 2000 && rt.anim !== "work") {
-          // Stuck! Teleport back to desk
-          const seat = SEATS[a.key];
-          const sp = tileCenter(seat.tx, seat.ty);
-          rt.x = sp.x;
-          rt.y = sp.y;
-          rt.path = [];
-          rt.anim = "idle";
-          rt.dir = seat.face;
-          rt.lastMoveMs = ms;
-          rt.lastPos = { x: rt.x, y: rt.y };
-          rt.nextDecisionMs = ms + randBetween(3000, 6000);
-          rt.activityBubble = null;
-          rt.activityUntilMs = 0;
         }
 
         // anim clocks
