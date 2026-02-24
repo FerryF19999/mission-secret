@@ -266,15 +266,26 @@ function tilePatternSprite(a: string, b: string, accent?: string): Sprite {
 }
 
 function wallTileSprite(): Sprite {
+  // slightly textured wall with gentle top highlight (gives depth)
   const W = PALETTE.wall;
   const H = PALETTE.wallHi;
+  const EDGE = "#1f1f2a";
   const px: string[][] = [];
   for (let y = 0; y < 16; y++) {
     const row: string[] = [];
     for (let x = 0; x < 16; x++) {
+      // base tone with subtle vertical gradient
       let c: string = W;
-      if ((x + y) % 9 === 0) c = H;
-      if (y === 0 || y === 15 || x === 0 || x === 15) c = "#1f1f2a";
+      if (y <= 2) c = H;
+      if (y >= 13) c = "#3f3f56";
+
+      // texture specks
+      const n = (x * 17 + y * 29) % 71;
+      if (n === 0 || n === 1) c = "#636389";
+      if ((x + y) % 11 === 0) c = y < 8 ? H : W;
+
+      // tile frame edge
+      if (y === 0 || y === 15 || x === 0 || x === 15) c = EDGE;
       row.push(c);
     }
     px.push(row);
@@ -880,9 +891,14 @@ function buildProps(): Prop[] {
   // Lounge - living room layout: TV on wall, couch facing it, coffee table between
   p.push({ kind: "tv", tx: 22, ty: 12 });           // TV centered on wall
   p.push({ kind: "playstation", tx: 22, ty: 13 });  // PS console under TV
+  p.push({ kind: "rug", tx: 20, ty: 14 });          // warm rug under seating
   p.push({ kind: "coffeeTable", tx: 22, ty: 15 });  // coffee table in front of couch
   p.push({ kind: "couch", tx: 21, ty: 17 });        // couch facing TV (further back)
   p.push({ kind: "bookshelf", tx: 27, ty: 12 });    // bookshelf on right wall, out of the way
+  p.push({ kind: "wallClock", tx: 29, ty: 12 });
+  p.push({ kind: "frame", tx: 29, ty: 14 });
+  p.push({ kind: "ceilingLight", tx: 22, ty: 14 });
+  p.push({ kind: "ceilingLight", tx: 26, ty: 16 });
   p.push({ kind: "plant", tx: 28, ty: 18 });
   p.push({ kind: "plant", tx: 17, ty: 18 });
 
@@ -1054,6 +1070,29 @@ function drawSparkle(ctx: CanvasRenderingContext2D, x: number, y: number, t01: n
   ctx.restore();
 }
 
+function drawDustMotes(ctx: CanvasRenderingContext2D, props: Prop[], ms: number) {
+  // soft floating dust in light beams (purely cosmetic)
+  const t = ms / 1000;
+  for (const pr of props) {
+    if (pr.kind !== "ceilingLight") continue;
+    const cx = pr.tx * TILE + 8;
+    const cy = pr.ty * TILE + 10;
+    for (let i = 0; i < 6; i++) {
+      const ph = i * 1.7 + pr.tx * 0.3 + pr.ty * 0.2;
+      const x = cx + Math.sin(t * 0.35 + ph) * (10 + i * 2.2);
+      const y = cy + Math.cos(t * 0.28 + ph * 1.3) * (7 + i * 1.6);
+      const a = 0.10 + 0.08 * (0.5 + 0.5 * Math.sin(t * 0.9 + ph));
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = "rgba(255,255,255,1)";
+      ctx.beginPath();
+      ctx.arc(x, y, 0.8 + (i % 2) * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
 function drawLabel(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, color: string, dot: string) {
   ctx.font = "7px ui-sans-serif, system-ui, -apple-system, Segoe UI";
   ctx.textAlign = "center";
@@ -1116,6 +1155,13 @@ type Sprites = {
   cooler: Sprite;
   monitor: Sprite;
   painting: Sprite;
+  whiteboard: Sprite;
+  waterDispenser: Sprite;
+  rug: Sprite;
+  ceilingLight: Sprite;
+  frame: Sprite;
+  wallClock: Sprite;
+  trash: Sprite;
   coffeeTable: Sprite;
   counter: Sprite;
   tv: Sprite;
@@ -1136,6 +1182,13 @@ function buildSprites(): Sprites {
     cooler: coolerSprite(),
     monitor: monitorSprite(),
     painting: paintingSprite(),
+    whiteboard: whiteboardSprite(),
+    waterDispenser: waterDispenserSprite(),
+    rug: rugSprite(),
+    ceilingLight: ceilingLightSprite(),
+    frame: frameSprite(),
+    wallClock: wallClockSprite(),
+    trash: trashSprite(),
     coffeeTable: coffeeTableSprite(),
     counter: counterSprite(),
     tv: tvSprite(),
@@ -1159,6 +1212,76 @@ function drawWorld(
       ctx.drawImage(spr.canvas, 0, 0, 16, 16, c * TILE, r * TILE, 16, 16);
     }
   }
+
+  // floor details (subtle borders, welcome mats, speckles)
+  const isWallTile = (tx: number, ty: number) => {
+    if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) return false;
+    if (tx === 0 || ty === 0 || tx === COLS - 1 || ty === ROWS - 1) return true;
+    if (tx === SPLIT_X && Math.abs(ty - DOOR_MAIN_RIGHT.ty) > 1) return true;
+    if (ty === SPLIT_Y && tx >= SPLIT_X && Math.abs(tx - DOOR_KITCHEN_LOUNGE.tx) > 1) return true;
+    if (ty === BOSS_WALL_Y && tx < SPLIT_X && Math.abs(tx - DOOR_BOSS.tx) > 1) return true;
+    // boss room enclosure
+    if (tx === 1 && ty > 0 && ty < BOSS_WALL_Y) return true;
+    if (tx === SPLIT_X - 1 && ty > 0 && ty < BOSS_WALL_Y) return true;
+    if (ty === 1 && tx > 0 && tx < SPLIT_X - 1) return true;
+    return false;
+  };
+
+  // depth shading along walls
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (isWallTile(c, r)) continue;
+      const x = c * TILE;
+      const y = r * TILE;
+      // speckles (tiny floor clutter)
+      const h = (c * 37 + r * 19) % 97;
+      if (h === 0 || h === 1) {
+        ctx.save();
+        ctx.globalAlpha = 0.10;
+        ctx.fillStyle = "#0b1220";
+        ctx.fillRect(x + 3, y + 10, 1, 1);
+        ctx.fillRect(x + 11, y + 5, 1, 1);
+        ctx.restore();
+      }
+
+      // border shadow
+      if (isWallTile(c, r - 1)) {
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = "#0b1220";
+        ctx.fillRect(x, y, 16, 3);
+        ctx.restore();
+      }
+      if (isWallTile(c - 1, r)) {
+        ctx.save();
+        ctx.globalAlpha = 0.10;
+        ctx.fillStyle = "#0b1220";
+        ctx.fillRect(x, y, 3, 16);
+        ctx.restore();
+      }
+    }
+  }
+
+  // welcome mats near doors (inside tiles)
+  const drawMat = (tx: number, ty: number, label: string) => {
+    const x = tx * TILE;
+    const y = ty * TILE;
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = "rgba(15,23,42,0.65)";
+    ctx.fillRect(x + 2, y + 5, 12, 9);
+    ctx.strokeStyle = "rgba(253,230,138,0.35)";
+    ctx.strokeRect(x + 2.5, y + 5.5, 11, 8);
+    ctx.font = "6px ui-monospace, SFMono-Regular, Menlo, Monaco";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(226,232,240,0.9)";
+    ctx.fillText(label, x + 8, y + 10);
+    ctx.restore();
+  };
+  drawMat(DOOR_MAIN_RIGHT.tx - 1, DOOR_MAIN_RIGHT.ty, "HI");
+  drawMat(DOOR_MAIN_RIGHT.tx + 1, DOOR_MAIN_RIGHT.ty, "YO");
+  drawMat(DOOR_BOSS.tx, DOOR_BOSS.ty + 1, "B");
 
   // walls
   const wall = (tx: number, ty: number) => {
@@ -1191,25 +1314,75 @@ function drawWorld(
   }
   for (let x = 1; x < SPLIT_X - 1; x++) wall(x, 1);
 
+  // baseboards (a thin highlight at wall/floor junction)
+  for (let ty = 0; ty < ROWS; ty++) {
+    for (let tx = 0; tx < COLS; tx++) {
+      if (!isWallTile(tx, ty)) continue;
+      // bottom edge when open floor below
+      if (!isWallTile(tx, ty + 1)) {
+        ctx.save();
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = "#94a3b8";
+        ctx.fillRect(tx * TILE, ty * TILE + 15, 16, 1);
+        ctx.restore();
+      }
+    }
+  }
+
   // props (big first)
   const drawAt = (spr: Sprite, tx: number, ty: number) => {
     ctx.drawImage(spr.canvas, tx * TILE, ty * TILE);
   };
 
+  // rugs first (sit under furniture)
+  for (const pr of props) {
+    if (pr.kind === "rug") drawAt(sprites.rug, pr.tx, pr.ty);
+  }
+
+  // main furniture / floor props
   for (const pr of props) {
     if (pr.kind === "desk") drawAt(sprites.desk, pr.tx, pr.ty);
     if (pr.kind === "bookshelf") drawAt(sprites.bookshelf, pr.tx, pr.ty);
     if (pr.kind === "vending") drawAt(sprites.vending, pr.tx, pr.ty);
     if (pr.kind === "couch") drawAt(sprites.couch, pr.tx, pr.ty);
     if (pr.kind === "cooler") drawAt(sprites.cooler, pr.tx, pr.ty);
-    if (pr.kind === "painting") drawAt(sprites.painting, pr.tx, pr.ty);
+    if (pr.kind === "waterDispenser") drawAt(sprites.waterDispenser, pr.tx, pr.ty);
     if (pr.kind === "coffeeTable") drawAt(sprites.coffeeTable, pr.tx, pr.ty);
     if (pr.kind === "counter") drawAt(sprites.counter, pr.tx, pr.ty);
     if (pr.kind === "tv") drawAt(sprites.tv, pr.tx, pr.ty);
     if (pr.kind === "playstation") drawAt(sprites.playstation, pr.tx, pr.ty);
+    if (pr.kind === "trash") drawAt(sprites.trash, pr.tx, pr.ty);
   }
+
+  // plants on top
   for (const pr of props) {
     if (pr.kind === "plant") drawAt(sprites.plant, pr.tx, pr.ty);
+  }
+
+  // wall decor / ceiling fixtures
+  for (const pr of props) {
+    if (pr.kind === "painting") drawAt(sprites.painting, pr.tx, pr.ty);
+    if (pr.kind === "whiteboard") drawAt(sprites.whiteboard, pr.tx, pr.ty);
+    if (pr.kind === "frame") drawAt(sprites.frame, pr.tx, pr.ty);
+    if (pr.kind === "wallClock") drawAt(sprites.wallClock, pr.tx, pr.ty);
+    if (pr.kind === "ceilingLight") drawAt(sprites.ceilingLight, pr.tx, pr.ty);
+  }
+
+  // warm light pools near ceiling lights
+  for (const pr of props) {
+    if (pr.kind !== "ceilingLight") continue;
+    const cx = pr.tx * TILE + 8;
+    const cy = pr.ty * TILE + 10;
+    const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, 34);
+    g.addColorStop(0, "rgba(253,230,138,0.20)");
+    g.addColorStop(1, "rgba(253,230,138,0.0)");
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 34, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   // monitors (glow when active/busy)
@@ -1250,13 +1423,36 @@ function drawWorld(
     }
   }
 
-  // subtle labels
-  ctx.font = "8px ui-sans-serif, system-ui";
-  ctx.fillStyle = "rgba(255,255,255,0.22)";
-  ctx.fillText("OFFICE", 2 * TILE, 11 * TILE + 2);
-  ctx.fillText("KITCHEN", 17 * TILE, 2 * TILE + 2);
-  ctx.fillText("LOUNGE", 18 * TILE, 12 * TILE + 2);
-  ctx.fillText("BOSS", 3 * TILE, 2 * TILE + 2);
+  // stylish room plaques
+  const plaque = (tx: number, ty: number, text: string, accent: string) => {
+    const x = tx * TILE;
+    const y = ty * TILE;
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = "rgba(2,6,23,0.55)";
+    ctx.strokeStyle = "rgba(148,163,184,0.25)";
+    ctx.lineWidth = 1;
+    const w = Math.max(26, Math.ceil(text.length * 4.2) + 16);
+    const h = 12;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(x + 6, y + 6, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = "7px ui-monospace, SFMono-Regular, Menlo, Monaco";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(226,232,240,0.9)";
+    ctx.fillText(text, x + 11, y + 6);
+    ctx.restore();
+  };
+  plaque(2, 11, "MAIN OFFICE", "rgba(56,189,248,0.95)");
+  plaque(17, 2, "KITCHEN", "rgba(34,197,94,0.95)");
+  plaque(18, 12, "LOUNGE", "rgba(251,191,36,0.95)");
+  plaque(3, 2, "BOSS ROOM", "rgba(244,114,182,0.95)");
 }
 
 function drawCharacter(
@@ -1896,6 +2092,7 @@ export default function OfficePage() {
       // draw world
       drawWorld(ctx, sprites, floor, props, live, ms);
       drawKitchenClock(ctx);
+      drawDustMotes(ctx, props, ms);
 
       // draw characters by y
       const drawList = live
