@@ -1313,7 +1313,8 @@ export default function OfficePage() {
           continue;
         }
 
-        const wantsWork = a.key === "yuri" || runningSet.has(a.key) || a.status === "active" || a.status === "busy";
+        // Only type at desk when there's an actual running task, not just "active" (online)
+        const wantsWork = runningSet.has(a.key) || a.status === "busy";
 
         // target selection (do not let agents choose a rest point near doors)
         if (wantsWork) {
