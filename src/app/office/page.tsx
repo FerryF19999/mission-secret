@@ -1412,13 +1412,15 @@ function buildProps(): Prop[] {
   p.push({ kind: "ceilingLight", tx: 15, ty: 3 });
   p.push({ kind: "frame", tx: 13, ty: 0 });
 
-  // lounge (bottom-right) — TV + PlayStation + couch
-  p.push({ kind: "tv", tx: 14, ty: 9 });
-  p.push({ kind: "playstation", tx: 14, ty: 10 });
+  // lounge (bottom-right) — TV wall + console, with couch facing it
+  // Place the TV on the lounge feature wall and center the couch beneath it.
+  p.push({ kind: "tv", tx: 14, ty: 8 });
+  p.push({ kind: "playstation", tx: 14, ty: 9 });
   p.push({ kind: "neonSign", tx: 16, ty: 8, text: "GAME ON" });
   p.push({ kind: "rug", tx: 13, ty: 11 });
-  p.push({ kind: "coffeeTable", tx: 15, ty: 12 });
-  p.push({ kind: "couch", tx: 12, ty: 13 });
+  p.push({ kind: "coffeeTable", tx: 14, ty: 11 });
+  // couch footprint starts at (13,12) so activity tiles (13,12)/(14,12) are on the couch area
+  p.push({ kind: "couch", tx: 13, ty: 12 });
   p.push({ kind: "bookshelf", tx: 17, ty: 9 });
   p.push({ kind: "wallClock", tx: 19, ty: 9 });
   p.push({ kind: "frame", tx: 19, ty: 11 });
@@ -2269,12 +2271,18 @@ function drawBookshelf(ctx: CanvasRenderingContext2D, x: number, y: number, seed
   ctx.fillStyle = frame;
   ctx.fillRect(x + 1, y + 1, 30, 30);
 
-  // inner cavity
+  // inner cavity (slightly brighter + bluish tint so books pop against the wall)
   const inner = ctx.createLinearGradient(x, y + 4, x, y + 28);
-  inner.addColorStop(0, "rgba(15,23,42,0.20)");
-  inner.addColorStop(1, "rgba(2,6,23,0.32)");
+  inner.addColorStop(0, "rgba(30,41,59,0.22)");
+  inner.addColorStop(0.55, "rgba(2,6,23,0.32)");
+  inner.addColorStop(1, "rgba(2,6,23,0.42)");
   ctx.fillStyle = inner;
   ctx.fillRect(x + 4, y + 4, 24, 24);
+  // subtle inset edge for separation
+  ctx.globalAlpha = 0.45;
+  ctx.strokeStyle = "rgba(226,232,240,0.10)";
+  ctx.strokeRect(x + 4.5, y + 4.5, 23, 23);
+  ctx.globalAlpha = 1;
 
   // shelves (4 rows => 4-6 feel in small sprite)
   ctx.globalAlpha = 0.95;
@@ -2326,20 +2334,59 @@ function drawBookshelf(ctx: CanvasRenderingContext2D, x: number, y: number, seed
 
       ctx.save();
       ctx.fillStyle = c;
+
+      // deterministic per-book “label” decision
+      const label = hatchNoise(rowSeed * 19, Math.floor(xx) * 13) > 0.55;
+      const darkLabel = hatchNoise(rowSeed * 23, Math.floor(xx) * 9) > 0.72;
+
       if (tilt) {
         ctx.translate(xx + w / 2, shelfY);
         ctx.rotate(-0.14);
         ctx.fillRect(-w / 2, -h + 1, w, h);
+
+        // crisp edge so individual books read at a glance
+        ctx.globalAlpha = 0.40;
+        ctx.strokeStyle = "rgba(2,6,23,0.55)";
+        ctx.strokeRect(-w / 2 + 0.5, -h + 1.5, w - 1, h - 2);
+
         // spine highlight
-        ctx.globalAlpha = 0.28;
-        ctx.fillStyle = "rgba(255,255,255,0.75)";
+        ctx.globalAlpha = 0.34;
+        ctx.fillStyle = "rgba(255,255,255,0.78)";
         ctx.fillRect(-w / 2 + 0.6, -h + 2, 1, h - 2);
+
+        // tiny title marks / label band
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = label ? (darkLabel ? "rgba(15,23,42,0.55)" : "rgba(226,232,240,0.75)") : "rgba(255,255,255,0.0)";
+        if (label && w >= 3) {
+          ctx.fillRect(-w / 2 + 1, -h + 3, w - 2, 2);
+          ctx.globalAlpha = 0.55;
+          ctx.fillStyle = darkLabel ? "rgba(226,232,240,0.85)" : "rgba(15,23,42,0.45)";
+          ctx.fillRect(-w / 2 + 1, -h + 6, w - 2, 1);
+          if (h > 8) ctx.fillRect(-w / 2 + 1, -h + 8, w - 2, 1);
+        }
       } else {
         ctx.fillRect(xx, shelfY - h + 1, w, h);
+
+        // crisp edge so individual books read at a glance
+        ctx.globalAlpha = 0.40;
+        ctx.strokeStyle = "rgba(2,6,23,0.55)";
+        ctx.strokeRect(xx + 0.5, shelfY - h + 1.5, w - 1, h - 2);
+
         // spine highlight
-        ctx.globalAlpha = 0.28;
-        ctx.fillStyle = "rgba(255,255,255,0.75)";
+        ctx.globalAlpha = 0.34;
+        ctx.fillStyle = "rgba(255,255,255,0.78)";
         ctx.fillRect(xx + 0.6, shelfY - h + 2, 1, h - 2);
+
+        // tiny title marks / label band
+        if (label && w >= 3) {
+          ctx.globalAlpha = 0.85;
+          ctx.fillStyle = darkLabel ? "rgba(15,23,42,0.55)" : "rgba(226,232,240,0.75)";
+          ctx.fillRect(xx + 1, shelfY - h + 3, w - 2, 2);
+          ctx.globalAlpha = 0.55;
+          ctx.fillStyle = darkLabel ? "rgba(226,232,240,0.85)" : "rgba(15,23,42,0.45)";
+          ctx.fillRect(xx + 1, shelfY - h + 6, w - 2, 1);
+          if (h > 8) ctx.fillRect(xx + 1, shelfY - h + 8, w - 2, 1);
+        }
       }
       ctx.restore();
 
