@@ -2167,14 +2167,18 @@ export default function OfficePage() {
 
             // ☕ Coffee: stand in front of cooler (28,2) or counter (22,2) or vending (18,2)
             if (kind === "coffee") {
-              const spots = [{ tx: 28, ty: 4 }, { tx: 22, ty: 3 }, { tx: 20, ty: 4 }];
-              const spot = spots[Math.floor(Math.random() * spots.length)];
-              destTile = pickNearbyWalkable(blocked, spot, 1, false);
+              // ☕ Stand directly at the counter/cooler/vending
+              const spots = [
+                { tx: 28, ty: 4 },  // below cooler
+                { tx: 23, ty: 3 },  // below counter
+                { tx: 19, ty: 4 },  // below vending
+              ];
+              destTile = spots[Math.floor(Math.random() * spots.length)];
             }
-            // 🎮 Gaming: sit in front of PlayStation (22,13) — between PS and coffee table
-            if (kind === "gaming") destTile = pickNearbyWalkable(blocked, { tx: 22, ty: 14 }, 1, false);
-            // 📺 Watch TV: sit on/near couch (21,17) facing TV at (22,12)
-            if (kind === "watching_tv") destTile = pickNearbyWalkable(blocked, { tx: 21, ty: 16 }, 1, false);
+            // 🎮 Gaming: sit on couch (21,17) and play — face the TV
+            if (kind === "gaming") destTile = { tx: 21, ty: 16 };
+            // 📺 Watch TV: also on couch area facing TV
+            if (kind === "watching_tv") destTile = { tx: 22, ty: 16 };
             // 📖 Reading: stand in front of a bookshelf
             if (kind === "reading") {
               const spots = [
