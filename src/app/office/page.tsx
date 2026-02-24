@@ -474,14 +474,16 @@ function buildFloor(): FloorKind[][] {
   return map;
 }
 
+const SITTING_OFFSET_Y = -10; // px: draw character higher when sitting at desk
+
 const SEATS: Record<RosterKey, { tx: number; ty: number; face: Dir }> = {
-  // boss room
-  yuri: { tx: 5, ty: 6, face: "down" },
-  // main office desks
-  glass: { tx: 4, ty: 14, face: "down" },
-  epstein: { tx: 9, ty: 14, face: "down" },
-  jarvis: { tx: 4, ty: 18, face: "down" },
-  friday: { tx: 9, ty: 18, face: "down" },
+  // boss room — desk at (3,4) is 2x2 covering rows 4-5, seat at row 6
+  yuri: { tx: 4, ty: 6, face: "up" },
+  // main office desks — desks at row 12/16, seats 1 row below desk bottom
+  glass: { tx: 3, ty: 14, face: "up" },
+  epstein: { tx: 8, ty: 14, face: "up" },
+  jarvis: { tx: 3, ty: 18, face: "up" },
+  friday: { tx: 8, ty: 18, face: "up" },
 };
 
 const DESK_POS: Record<RosterKey, { tx: number; ty: number }> = {
@@ -884,19 +886,23 @@ function drawCharacter(
   const sx = col * FRAME_W;
   const sy = row * FRAME_H;
 
+  // Apply sitting offset when working at desk
+  const isSitting = rt.anim === "work" && (status === "active" || status === "busy");
+  const sittingOff = isSitting ? SITTING_OFFSET_Y : 0;
+
   const dx = Math.round(rt.x - FRAME_W / 2);
-  const dy = Math.round(rt.y - FRAME_H);
+  const dy = Math.round(rt.y - FRAME_H + sittingOff);
 
   // shadow
   ctx.fillStyle = "rgba(0,0,0,0.35)";
   ctx.beginPath();
-  ctx.ellipse(rt.x, rt.y - 4, 7, 4, 0, 0, Math.PI * 2);
+  ctx.ellipse(rt.x, rt.y - 4 + sittingOff, 7, 4, 0, 0, Math.PI * 2);
   ctx.fill();
 
   if (selected) {
     ctx.fillStyle = "rgba(56,189,248,0.18)";
     ctx.beginPath();
-    ctx.ellipse(rt.x, rt.y - 4, 11, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(rt.x, rt.y - 4 + sittingOff, 11, 6, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
