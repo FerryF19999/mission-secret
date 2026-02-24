@@ -1317,10 +1317,11 @@ const SEATS: Record<RosterKey, { tx: number; ty: number; face: Dir }> = {
   yuri: { tx: 4, ty: 3, face: "down" },
 
   // main office (bottom-left)
-  // Two desk rows (top+bottom) with a clear middle aisle and extra breathing room to the walls.
-  glass: { tx: 2, ty: 8, face: "down" },
+  // Spread desks into a roomy 2x2 grid with clear aisles.
+  // Seat tile is 1 tile above the desk (character faces down toward the desk).
+  glass: { tx: 3, ty: 8, face: "down" },
   epstein: { tx: 7, ty: 8, face: "down" },
-  jarvis: { tx: 2, ty: 11, face: "down" },
+  jarvis: { tx: 3, ty: 11, face: "down" },
   friday: { tx: 7, ty: 11, face: "down" },
 };
 
@@ -1328,108 +1329,32 @@ const SEATS: Record<RosterKey, { tx: number; ty: number; face: Dir }> = {
 const DESK_POS: Record<RosterKey, { tx: number; ty: number }> = {
   yuri: { tx: 3, ty: 4 },
 
-  // Spread desks: 2 on the upper row, 2 on the lower row, with a clear center aisle.
-  // Keep a buffer from the bottom wall (y=14) so the scene doesn't feel cramped.
-  glass: { tx: 1, ty: 9 },
+  // Main office desks (2x2 grid) with generous gaps between stations.
+  // Example target: desks at tx=2 and tx=6 on two rows.
+  glass: { tx: 2, ty: 9 },
   epstein: { tx: 6, ty: 9 },
-  jarvis: { tx: 1, ty: 12 },
+  jarvis: { tx: 2, ty: 12 },
   friday: { tx: 6, ty: 12 },
 };
 
 function buildProps(): Prop[] {
+  // Minimal, clean layout: keep only essentials so the office reads uncluttered.
   const p: Prop[] = [];
 
-  // boss room (top-left) — compact + cozy
-  p.push({ kind: "bookshelf", tx: 2, ty: 2 });
-  p.push({ kind: "shelfDecor", tx: 2, ty: 2, variant: "globe" });
-  p.push({ kind: "shelfDecor", tx: 3, ty: 2, variant: "trophy" });
-
-  p.push({ kind: "plant", tx: 8, ty: 2 });
-
-  // keep Yuri's real desk for activities/pathing, but add a visual "executive" desk + chair around it
-  // visual executive desk vignette (kept separate from Yuri's functional desk to avoid overlap)
-  p.push({ kind: "execDesk", tx: 6, ty: 3 });
-  p.push({ kind: "execChair", tx: 7, ty: 2 });
-  p.push({ kind: "rug", tx: 2, ty: 3 });
-  p.push({ kind: "standingLamp", tx: 8, ty: 4 });
-  p.push({ kind: "visitorSeat", tx: 6, ty: 5 });
-  p.push({ kind: "visitorSeat", tx: 7, ty: 5 });
-
-  // tiny gallery wall (boss room)
-  p.push({ kind: "galleryFrame", tx: 2, ty: 1, w: 6 * TILE, h: 3 * TILE });
-  p.push({ kind: "painting", tx: 6, ty: 0 });
-
-  // Yuri desk (functional for seating/pathing)
+  // Desks (functional for seating/pathing)
   p.push({ kind: "desk", tx: DESK_POS.yuri.tx, ty: DESK_POS.yuri.ty, owner: "yuri" });
-  p.push({ kind: "filingCabinet", tx: DESK_POS.yuri.tx + 2, ty: DESK_POS.yuri.ty });
-
-  // main office desks (bottom-left)
   p.push({ kind: "desk", tx: DESK_POS.glass.tx, ty: DESK_POS.glass.ty, owner: "glass" });
-  p.push({ kind: "filingCabinet", tx: DESK_POS.glass.tx + 2, ty: DESK_POS.glass.ty });
-
   p.push({ kind: "desk", tx: DESK_POS.epstein.tx, ty: DESK_POS.epstein.ty, owner: "epstein" });
-  p.push({ kind: "filingCabinet", tx: DESK_POS.epstein.tx + 2, ty: DESK_POS.epstein.ty });
-
   p.push({ kind: "desk", tx: DESK_POS.jarvis.tx, ty: DESK_POS.jarvis.ty, owner: "jarvis" });
-  p.push({ kind: "filingCabinet", tx: DESK_POS.jarvis.tx + 2, ty: DESK_POS.jarvis.ty });
-
   p.push({ kind: "desk", tx: DESK_POS.friday.tx, ty: DESK_POS.friday.ty, owner: "friday" });
-  p.push({ kind: "filingCabinet", tx: DESK_POS.friday.tx + 2, ty: DESK_POS.friday.ty });
 
-  // decor main office — keep the central aisles open
-  p.push({ kind: "bookshelf", tx: 8, ty: 8 });
-  p.push({ kind: "plant", tx: 1, ty: 7 });
-  // plants kept to the perimeter so desk approaches stay clean
-  p.push({ kind: "plant", tx: 4, ty: 7 });
-
-  // plant corner (instagrammable) — cluster, non-blocking
-  // keep it tucked to the bottom-right of the main office so it doesn't crowd the desks.
-  p.push({ kind: "plantDeco", tx: 8, ty: 12 });
-  p.push({ kind: "plantDeco", tx: 9, ty: 12 });
-  p.push({ kind: "plantDeco", tx: 8, ty: 13 });
-
-  // mission control plaque — visual only (on the boss-room divider wall)
-  p.push({ kind: "plaqueSign", tx: 1, ty: BOSS_WALL_Y, text: "MISSION CONTROL" });
-
-  // main office wall decor + utility
-  p.push({ kind: "whiteboard", tx: 0, ty: 10 });
-  p.push({ kind: "frame", tx: 0, ty: 8 });
-  // trash cans (keep off desk footprints)
-  p.push({ kind: "trash", tx: 4, ty: 14 });
-  p.push({ kind: "trash", tx: 5, ty: 14 });
-
-  // ceiling lights (non-blocking)
-  p.push({ kind: "ceilingLight", tx: 6, ty: 3 });  // boss room
-  p.push({ kind: "ceilingLight", tx: 4, ty: 11 }); // main office
-
-  // kitchen (top-right)
-  p.push({ kind: "vending", tx: 12, ty: 2 });
-  p.push({ kind: "counter", tx: 14, ty: 2 });
-  p.push({ kind: "fridge", tx: 16, ty: 2 });
-  p.push({ kind: "cooler", tx: 18, ty: 2 });
-  p.push({ kind: "waterDispenser", tx: 17, ty: 4 });
-  p.push({ kind: "plant", tx: 11, ty: 5 });
-  p.push({ kind: "coffeeTable", tx: 14, ty: 5 });
-  p.push({ kind: "ceilingLight", tx: 15, ty: 3 });
-  p.push({ kind: "frame", tx: 13, ty: 0 });
-
-  // lounge (bottom-right) — TV mounted on the WALL, couch facing it
-  // NOTE: the kitchen↔lounge doorway spans x=14..16 on the split wall (y=SPLIT_Y), so keep the TV away from that opening.
-  // Mount TV on the lounge top wall (y=SPLIT_Y) and place seating below it facing upward.
-  p.push({ kind: "tv", tx: 12, ty: SPLIT_Y });
-  p.push({ kind: "playstation", tx: 12, ty: SPLIT_Y + 1 });
-  p.push({ kind: "neonSign", tx: 17, ty: 8, text: "GAME ON" });
-
-  // lounge seating vignette (rug + table + couch). Keep walkable tiles in FRONT of the couch for activities.
-  p.push({ kind: "rug", tx: 11, ty: 11 });
-  p.push({ kind: "coffeeTable", tx: 12, ty: 11 });
-  p.push({ kind: "couch", tx: 11, ty: 12 });
-
+  // Bookshelves (simple + visible)
+  p.push({ kind: "bookshelf", tx: 1, ty: 7 });
   p.push({ kind: "bookshelf", tx: 17, ty: 9 });
-  p.push({ kind: "wallClock", tx: 19, ty: 9 });
-  p.push({ kind: "frame", tx: 19, ty: 11 });
-  p.push({ kind: "ceilingLight", tx: 15, ty: 11 });
-  p.push({ kind: "plant", tx: 18, ty: 13 });
+
+  // Lounge essentials: TV on the wall + couch below it
+  p.push({ kind: "tv", tx: 12, ty: SPLIT_Y });
+  p.push({ kind: "couch", tx: 11, ty: 12 });
 
   return p;
 }
@@ -3386,40 +3311,7 @@ function drawWorldStatic(
 
   // monitors are dynamic (online glow + scrolling code) and are drawn in drawWorldDynamic()
 
-  // stylish room plaques
-  const plaque = (tx: number, ty: number, text: string, accent: string) => {
-    const x = tx * TILE;
-    const y = ty * TILE;
-    ctx.save();
-    ctx.globalAlpha = 0.92;
-    ctx.fillStyle = "rgba(2,6,23,0.55)";
-    ctx.strokeStyle = "rgba(148,163,184,0.25)";
-    ctx.lineWidth = 1;
-    const w = Math.max(26, Math.ceil(text.length * 4.2) + 16);
-    const h = 12;
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 4);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = accent;
-    ctx.beginPath();
-    ctx.arc(x + 6, y + 6, 2.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.font = "7px ui-monospace, SFMono-Regular, Menlo, Monaco";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "rgba(226,232,240,0.9)";
-    ctx.fillText(text, x + 11, y + 6);
-    ctx.restore();
-  };
-  // Place labels on guaranteed-empty wall tiles (never used by props/agents)
-  // - Top rooms: y=0 (outer wall)
-  // - Bottom rooms: y=9/10 wall bands (room separators)
-  // Place labels on guaranteed-empty wall tiles
-  plaque(2, BOSS_WALL_Y, "MAIN OFFICE", "rgba(56,189,248,0.95)");
-  plaque(12, 0, "KITCHEN", "rgba(34,197,94,0.95)");
-  plaque(12, SPLIT_Y, "LOUNGE", "rgba(251,191,36,0.95)");
-  plaque(2, 0, "BOSS ROOM", "rgba(244,114,182,0.95)");
+  // Room plaques intentionally removed — keep the scene minimal/clean.
 }
 
 function drawWorldDynamic(
@@ -3898,8 +3790,7 @@ export default function OfficePage() {
             // 📖 Reading: stand in front of a bookshelf
             if (kind === "reading") {
               const spots = [
-                { tx: 3, ty: 4 },   // in front of boss-room bookshelf (2,2)
-                { tx: 8, ty: 10 },  // in front of main-office bookshelf (8,8)
+                { tx: 1, ty: 9 },   // in front of main-office bookshelf (1,7)
                 { tx: 17, ty: 11 }, // in front of lounge bookshelf (17,9)
               ];
               const spot = spots[Math.floor(Math.random() * spots.length)];
