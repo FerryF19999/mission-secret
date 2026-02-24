@@ -1965,178 +1965,41 @@ function drawWallTile(ctx: CanvasRenderingContext2D, x: number, y: number, tx: n
 }
 
 function drawDesk(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  // 48x32
+  // 48x32 — simplified desk + simple monitor
   ctx.save();
 
-  // shadow under entire desk (ground contact)
-  ctx.save();
-  ctx.globalAlpha = 0.35;
-  const sh = ctx.createRadialGradient(x + 24, y + 30, 6, x + 24, y + 30, 26);
-  sh.addColorStop(0, "rgba(2,6,23,0.55)");
-  sh.addColorStop(1, "rgba(2,6,23,0.0)");
-  ctx.fillStyle = sh;
-  ctx.beginPath();
-  ctx.ellipse(x + 24, y + 30, 22, 7, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  // desk body
-  const body = ctx.createLinearGradient(x, y + 8, x, y + 30);
-  body.addColorStop(0, "#6C4020");
-  body.addColorStop(0.5, "#583116");
-  body.addColorStop(1, "#3C210E");
-  ctx.fillStyle = body;
-  ctx.fillRect(x + 2, y + 10, 44, 18);
-
-  // top surface (lighter) + subtle grain
-  const top = ctx.createLinearGradient(x, y + 6, x + 48, y + 14);
-  top.addColorStop(0, "#A66B38");
-  top.addColorStop(1, "#6E4222");
-  ctx.fillStyle = top;
-  ctx.fillRect(x + 2, y + 8, 44, 6);
-
-  ctx.save();
-  ctx.globalAlpha = 0.18;
-  ctx.strokeStyle = "rgba(255, 236, 210, 0.55)";
-  ctx.lineWidth = 0.6;
-  for (let i = 0; i < 3; i++) {
-    const yy = y + 9 + i * 2;
-    ctx.beginPath();
-    ctx.moveTo(x + 4, yy);
-    ctx.bezierCurveTo(x + 14, yy - 0.4, x + 28, yy + 0.6, x + 44, yy);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 0.12;
-  ctx.strokeStyle = "rgba(44, 24, 8, 0.50)";
-  ctx.beginPath();
-  ctx.moveTo(x + 5, y + 12.5);
-  ctx.lineTo(x + 43, y + 12.5);
-  ctx.stroke();
-  ctx.restore();
-
-  // bevel highlight/shadow
-  ctx.globalAlpha = 0.55;
-  ctx.fillStyle = "rgba(255,255,255,0.20)";
-  ctx.fillRect(x + 2, y + 8, 44, 1);
-  ctx.fillRect(x + 2, y + 8, 1, 20);
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
-  ctx.fillRect(x + 45, y + 9, 1, 19);
-  ctx.fillRect(x + 3, y + 27, 43, 1);
-  ctx.globalAlpha = 1;
-
-  // wood grain lines
+  // soft ground shadow
   ctx.save();
   ctx.globalAlpha = 0.22;
-  ctx.strokeStyle = "rgba(255, 224, 180, 0.35)";
-  ctx.lineWidth = 0.6;
-  for (let i = 0; i < 5; i++) {
-    const yy = y + 12 + i * 3;
-    ctx.beginPath();
-    ctx.moveTo(x + 5, yy);
-    ctx.bezierCurveTo(x + 14, yy - 0.6, x + 30, yy + 0.8, x + 44, yy - 0.2);
-    ctx.stroke();
-  }
+  ctx.fillStyle = "rgba(2,6,23,0.55)";
+  ctx.beginPath();
+  ctx.ellipse(x + 24, y + 30, 22, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 
-  // drawers (right)
-  ctx.save();
-  ctx.globalAlpha = 0.95;
-  ctx.fillStyle = "rgba(40, 22, 10, 0.35)";
-  ctx.fillRect(x + 32, y + 14, 12, 12);
-  ctx.strokeStyle = "rgba(2,6,23,0.45)";
-  ctx.strokeRect(x + 32.5, y + 14.5, 11, 11);
-  ctx.globalAlpha = 0.55;
-  ctx.beginPath();
-  ctx.moveTo(x + 32.5, y + 20.5);
-  ctx.lineTo(x + 43.5, y + 20.5);
-  ctx.stroke();
-  // handles
-  ctx.globalAlpha = 0.8;
-  ctx.fillStyle = "rgba(226,232,240,0.75)";
-  ctx.fillRect(x + 36, y + 18, 4, 1);
-  ctx.fillRect(x + 36, y + 23, 4, 1);
-  ctx.restore();
+  // desk (clean blocks)
+  ctx.fillStyle = PALETTE.woodA;
+  ctx.fillRect(x + 2, y + 8, 44, 6); // top
+
+  ctx.fillStyle = PALETTE.woodB;
+  ctx.fillRect(x + 2, y + 14, 44, 14); // front
 
   // legs
-  ctx.fillStyle = "#2A170C";
-  ctx.fillRect(x + 5, y + 26, 4, 6);
-  ctx.fillRect(x + 39, y + 26, 4, 6);
+  ctx.fillStyle = "#3b2a1a";
+  ctx.fillRect(x + 6, y + 26, 4, 6);
+  ctx.fillRect(x + 38, y + 26, 4, 6);
 
-  // monitor (with bezel, screen gradient, reflection)
-  ctx.save();
-  // bezel
-  const bezel = ctx.createLinearGradient(x + 18, y + 1, x + 32, y + 11);
-  bezel.addColorStop(0, "#2B3146");
-  bezel.addColorStop(1, "#12182B");
-  ctx.fillStyle = bezel;
-  ctx.fillRect(x + 18, y + 1, 14, 10);
-  ctx.globalAlpha = 0.55;
-  ctx.strokeStyle = "rgba(226,232,240,0.18)";
-  ctx.strokeRect(x + 18.5, y + 1.5, 13, 9);
-  ctx.globalAlpha = 1;
+  // monitor: simple rectangle screen (no gradients/details)
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(x + 18, y + 2, 14, 9);
+  ctx.strokeStyle = "rgba(226,232,240,0.20)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 18.5, y + 2.5, 13, 8);
 
-  // stand
-  const stand = ctx.createLinearGradient(x + 23, y + 11, x + 27, y + 14);
-  stand.addColorStop(0, "#0B1020");
-  stand.addColorStop(1, "#111827");
-  ctx.fillStyle = stand;
+  // simple stand
+  ctx.fillStyle = "#0b1020";
   ctx.fillRect(x + 23, y + 11, 4, 2);
   ctx.fillRect(x + 21, y + 13, 8, 1);
-
-  // screen w/ glow
-  ctx.shadowBlur = 12;
-  ctx.shadowColor = "rgba(236, 72, 153, 0.55)";
-  const scr = ctx.createLinearGradient(x + 19, y + 2, x + 31, y + 9);
-  scr.addColorStop(0, "#7C3AED");
-  scr.addColorStop(0.55, "#A855F7");
-  scr.addColorStop(1, "#EC4899");
-  ctx.fillStyle = scr;
-  ctx.fillRect(x + 19, y + 2, 12, 7);
-  ctx.shadowBlur = 0;
-
-  // scanlines + specular reflection
-  ctx.globalAlpha = 0.16;
-  ctx.fillStyle = "rgba(255,255,255,0.55)";
-  ctx.fillRect(x + 20, y + 3, 6, 1);
-  ctx.fillRect(x + 20, y + 5, 10, 1);
-  ctx.globalAlpha = 0.10;
-  for (let yy = 2; yy <= 8; yy += 2) ctx.fillRect(x + 19, y + yy, 12, 1);
-
-  // reflection dot
-  ctx.globalAlpha = 0.85;
-  ctx.beginPath();
-  ctx.arc(x + 22.5, y + 4.0, 0.9, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-
-  // keyboard (more detailed)
-  ctx.globalAlpha = 0.9;
-  const kb = ctx.createLinearGradient(x + 16, y + 15, x + 34, y + 19);
-  kb.addColorStop(0, "rgba(30,41,59,0.65)");
-  kb.addColorStop(1, "rgba(15,23,42,0.75)");
-  ctx.fillStyle = kb;
-  ctx.fillRect(x + 16, y + 15, 18, 4);
-  ctx.globalAlpha = 0.25;
-  ctx.fillStyle = "rgba(226,232,240,0.55)";
-  for (let row = 0; row < 2; row++) {
-    for (let i = 0; i < 6; i++) ctx.fillRect(x + 17 + i * 3, y + 16 + row, 2, 1);
-  }
-  ctx.globalAlpha = 1;
-
-  // coffee mug
-  ctx.globalAlpha = 0.95;
-  ctx.fillStyle = "rgba(226,232,240,0.9)";
-  ctx.beginPath();
-  ctx.roundRect(x + 8, y + 14, 5, 6, 1.5);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(15,23,42,0.25)";
-  ctx.stroke();
-  ctx.strokeStyle = "rgba(226,232,240,0.8)";
-  ctx.beginPath();
-  ctx.arc(x + 13.5, y + 17, 2, -0.8, 0.8);
-  ctx.stroke();
-  ctx.restore();
 
   ctx.restore();
 }
