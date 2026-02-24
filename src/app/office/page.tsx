@@ -546,17 +546,18 @@ function playstationSprite(): Sprite {
 }
 
 function monitorSprite(): Sprite {
-  // 12x10 tiny monitor
+  // 12x10 monitor facing UP (screen visible from top, toward agent above)
   const _ = "";
-  const B = "#0b1220";
-  const F = "#334155";
+  const F = "#334155"; // frame
+  const B = "#0b1220"; // screen (dark)
+  const G = "#1a3050"; // screen glow
   const px: string[][] = Array.from({ length: 10 }, () => Array.from({ length: 12 }, () => _));
-  for (let y = 0; y < 7; y++) for (let x = 0; x < 12; x++) px[y][x] = F;
-  for (let y = 1; y < 6; y++) for (let x = 1; x < 11; x++) px[y][x] = B;
-  // stand
-  for (let y = 7; y < 10; y++) for (let x = 4; x < 8; x++) px[y][x] = F;
-  px[9][3] = F;
-  px[9][8] = F;
+  // stand/base at top (closer to agent)
+  px[0][3] = F; px[0][8] = F;
+  for (let x = 4; x < 8; x++) { px[0][x] = F; px[1][x] = F; }
+  // monitor body (screen faces up = toward agent)
+  for (let y = 2; y < 10; y++) for (let x = 0; x < 12; x++) px[y][x] = F;
+  for (let y = 3; y < 9; y++) for (let x = 1; x < 11; x++) px[y][x] = (x + y) % 5 < 1 ? G : B;
   return spriteFromPixels(px, 1);
 }
 
