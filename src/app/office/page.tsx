@@ -62,10 +62,10 @@ type CharacterRuntime = {
 };
 
 const TILE = 16;
-const INTERNAL_W = 480;
-const INTERNAL_H = 320;
-const COLS = INTERNAL_W / TILE; // 30
-const ROWS = INTERNAL_H / TILE; // 20
+const INTERNAL_W = 960;  // doubled for more detail
+const INTERNAL_H = 640;  // doubled for more detail
+const COLS = INTERNAL_W / TILE; // 60
+const ROWS = INTERNAL_H / TILE; // 40
 
 const FPS_CAP = 20;
 const FRAME_MS = 1000 / FPS_CAP;
