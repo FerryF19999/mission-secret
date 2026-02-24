@@ -547,31 +547,31 @@ function buildFloor(): FloorKind[][] {
 
 const SITTING_OFFSET_Y = 4; // px: nudge character down into desk when sitting
 
-const SEATS: Record<RosterKey, { tx: number; ty: number; face: Dir }> = {
-  // Seat ABOVE desk, facing DOWN toward it (so you see the character's face typing)
-  // boss room — desk at (3,4), seat at row 3
-  yuri: { tx: 4, ty: 3, face: "down" },
-  // main office — desks at row 12/16, seats 1 row above desk top
-  glass: { tx: 3, ty: 11, face: "down" },
-  epstein: { tx: 8, ty: 11, face: "down" },
-  jarvis: { tx: 3, ty: 15, face: "down" },
-  friday: { tx: 8, ty: 15, face: "down" },
+// Standard RPG layout: desk ABOVE, character BELOW facing UP toward monitor
+const DESK_POS: Record<RosterKey, { tx: number; ty: number }> = {
+  yuri: { tx: 3, ty: 2 },
+  glass: { tx: 2, ty: 11 },
+  epstein: { tx: 7, ty: 11 },
+  jarvis: { tx: 2, ty: 15 },
+  friday: { tx: 7, ty: 15 },
 };
 
-const DESK_POS: Record<RosterKey, { tx: number; ty: number }> = {
-  yuri: { tx: 3, ty: 4 },
-  glass: { tx: 2, ty: 12 },
-  epstein: { tx: 7, ty: 12 },
-  jarvis: { tx: 2, ty: 16 },
-  friday: { tx: 7, ty: 16 },
+const SEATS: Record<RosterKey, { tx: number; ty: number; face: Dir }> = {
+  // Seat BELOW desk, facing UP toward monitor
+  yuri: { tx: 4, ty: 4, face: "up" },
+  glass: { tx: 3, ty: 13, face: "up" },
+  epstein: { tx: 8, ty: 13, face: "up" },
+  jarvis: { tx: 3, ty: 17, face: "up" },
+  friday: { tx: 8, ty: 17, face: "up" },
 };
 
 function buildProps(): Prop[] {
   const p: Prop[] = [];
 
   // boss room (top-left)
-  p.push({ kind: "bookshelf", tx: 2, ty: 2 });
+  p.push({ kind: "bookshelf", tx: 8, ty: 2 });
   p.push({ kind: "plant", tx: 12, ty: 2 });
+  p.push({ kind: "plant", tx: 2, ty: 7 });
   p.push({ kind: "desk", tx: DESK_POS.yuri.tx, ty: DESK_POS.yuri.ty, owner: "yuri" });
 
   // main office desks
