@@ -1384,8 +1384,9 @@ function buildProps(): Prop[] {
   p.push({ kind: "plantDeco", tx: 3, ty: 11 });
   p.push({ kind: "plantDeco", tx: 2, ty: 12 });
 
-  // entrance lobby (top-right corner wall) — visual only, clear of all furniture
-  p.push({ kind: "plaqueSign", tx: 26, ty: 1, text: "MISSION CONTROL" });
+  // entrance lobby / mission control plaque — visual only
+  // Place on an empty wall-band tile between boss room and main office (no overlap with props/agents).
+  p.push({ kind: "plaqueSign", tx: 14, ty: 10, text: "MISSION CONTROL" });
   p.push({ kind: "plantDeco", tx: 6, ty: 18 });
   p.push({ kind: "plantDeco", tx: 8, ty: 18 });
 
@@ -1745,23 +1746,84 @@ function buildSprites(): Sprites {
 }
 
 function drawFloorWoodTile(ctx: CanvasRenderingContext2D, x: number, y: number, tx: number, ty: number) {
-  // Wood planks with visible grain + seams; each plank has a top-left highlight and bottom-right shadow.
-  const g = ctx.createLinearGradient(x, y, x + 16, y + 16);
-  g.addColorStop(0, "#D8A84E");
-  g.addColorStop(0.45, "#B98635");
-  g.addColorStop(1, "#7A4B12");
-  ctx.fillStyle = g;
-  ctx.fillRect(x, y, 16, 16);
-
+  // Wood planks (AGGRESSIVE): distinct plank strips w/ per-plank gradients, cracks, knots, and grain curves.
   // plank seams (vary with tile coord so it doesn't look tiled)
   const seamA = ((tx * 3 + ty) % 3) + 4; // 4..6
   const seamB = seamA + 5 + ((tx + ty) % 2); // ~10..12
 
-  // seams (dark) + per-plank edge relief (light on left/top-left, shadow on right/bottom-right)
+  const planks: Array<{ x0: number; x1: number; tint: number }> = [
+    { x0: 0, x1: seamA, tint: ((tx + ty) % 3) - 1 },
+    { x0: seamA, x1: seamB, tint: ((tx * 2 + ty) % 3) - 1 },
+    { x0: seamB, x1: 16, tint: ((tx + ty * 2) % 3) - 1 },
+  ];
+
+  // paint planks as separate rectangles with subtle shade differences + 3D lighting
+  for (let i = 0; i < planks.length; i++) {
+    const p = planks[i]!;
+    const w = p.x1 - p.x0;
+    const base0 = p.tint === -1 ? "#C68F3F" : p.tint === 0 ? "#B98635" : "#AE7B2E";
+    const base1 = p.tint === -1 ? "#A77027" : p.tint === 0 ? "#8E5B1F" : "#7C4D17";
+    const g = ctx.createLinearGradient(x + p.x0, y, x + p.x0 + w, y + 16);
+    g.addColorStop(0, "#E1B260");
+    g.addColorStop(0.18, base0);
+    g.addColorStop(1, base1);
+    ctx.fillStyle = g;
+    ctx.fillRect(x + p.x0, y, w, 16);
+
+    // plank highlight on top-left edge
+    ctx.save();
+    ctx.globalAlpha = 0.14;
+    ctx.fillStyle = "rgba(255,255,255,0.65)";
+    ctx.fillRect(x + p.x0, y, w, 1);
+    ctx.fillRect(x + p.x0, y, 1, 16);
+
+    // plank shadow on bottom-right edge
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(x + p.x0, y + 15, w, 1);
+    ctx.fillRect(x + p.x0 + w - 1, y, 1, 16);
+    ctx.restore();
+
+    // grain curves (wavy, not straight)
+    ctx.save();
+    ctx.lineWidth = 0.65;
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = "rgba(255, 241, 205, 0.45)";
+    for (let k = 0; k < 3; k++) {
+      const yy = y + 3 + k * 4 + (((tx + ty + i + k) % 3) - 1) * 0.25;
+      ctx.beginPath();
+      ctx.moveTo(x + p.x0 + 1, yy);
+      ctx.bezierCurveTo(x + p.x0 + 2 + w * 0.35, yy + 0.9, x + p.x0 + 2 + w * 0.7, yy - 0.7, x + p.x0 + w - 1, yy + 0.2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.14;
+    ctx.strokeStyle = "rgba(44, 24, 8, 0.40)";
+    for (let k = 0; k < 2; k++) {
+      const yy = y + 5 + k * 5;
+      ctx.beginPath();
+      ctx.moveTo(x + p.x0 + 1, yy);
+      ctx.bezierCurveTo(x + p.x0 + 2 + w * 0.4, yy - 0.4, x + p.x0 + 2 + w * 0.75, yy + 1.0, x + p.x0 + w - 1, yy);
+      ctx.stroke();
+    }
+
+    // knots (deterministic per plank)
+    const knot = hatchNoise(tx * 19 + i * 7, ty * 11 + i * 13);
+    if (knot > 0.80) {
+      ctx.globalAlpha = 0.22;
+      ctx.fillStyle = "rgba(60, 32, 12, 0.60)";
+      const kx = x + p.x0 + 2 + Math.floor((knot * 100) % Math.max(1, w - 4));
+      const ky = y + 7 + Math.floor(((knot * 1000) % 6));
+      ctx.fillRect(kx, ky, 2, 1);
+      ctx.fillRect(kx - 1, ky + 1, 3, 1);
+    }
+    ctx.restore();
+  }
+
+  // cracks/seams between planks (dark) + tiny chips
   ctx.save();
   ctx.lineWidth = 1;
-  ctx.globalAlpha = 0.50;
-  ctx.strokeStyle = "rgba(44, 24, 8, 0.65)";
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = "rgba(44, 24, 8, 0.75)";
   ctx.beginPath();
   for (const s of [seamA, seamB]) {
     ctx.moveTo(x + s + 0.5, y + 0.5);
@@ -1769,50 +1831,15 @@ function drawFloorWoodTile(ctx: CanvasRenderingContext2D, x: number, y: number, 
   }
   ctx.stroke();
 
-  // subtle highlight on top-left edge of each plank
-  ctx.globalAlpha = 0.16;
-  ctx.fillStyle = "rgba(255,255,255,0.55)";
-  ctx.fillRect(x + 0, y + 0, 16, 1);
-  // highlight just left of seams
-  ctx.fillRect(x + seamA - 1, y + 0, 1, 16);
-  ctx.fillRect(x + seamB - 1, y + 0, 1, 16);
-
-  // subtle shadow on bottom-right edge of each plank
-  ctx.globalAlpha = 0.14;
-  ctx.fillStyle = "rgba(0,0,0,0.50)";
-  ctx.fillRect(x + 0, y + 15, 16, 1);
-  ctx.fillRect(x + seamA + 1, y + 0, 1, 16);
-  ctx.fillRect(x + seamB + 1, y + 0, 1, 16);
-  ctx.restore();
-
-  // grain: wavy light + darker growth rings
-  ctx.save();
-  ctx.lineWidth = 0.6;
-  ctx.globalAlpha = 0.22;
-  ctx.strokeStyle = "rgba(255, 241, 205, 0.40)";
-  for (let i = 0; i < 5; i++) {
-    const yy = y + 2 + i * 3 + (((tx * 2 + ty + i) % 3) - 1) * 0.35;
+  // extra micro-cracks across the tile
+  ctx.globalAlpha = 0.12;
+  ctx.strokeStyle = "rgba(20, 12, 6, 0.70)";
+  for (let yy = 2; yy <= 14; yy += 4) {
+    if (hatchNoise(tx * 7 + yy, ty * 11 + yy) < 0.55) continue;
     ctx.beginPath();
-    ctx.moveTo(x + 1, yy);
-    ctx.bezierCurveTo(x + 6, yy + 0.8, x + 10, yy - 0.6, x + 15, yy + 0.3);
+    ctx.moveTo(x + 1.5, y + yy + 0.5);
+    ctx.lineTo(x + 14.5, y + yy + 0.5);
     ctx.stroke();
-  }
-  ctx.globalAlpha = 0.18;
-  ctx.strokeStyle = "rgba(50, 28, 10, 0.40)";
-  for (let i = 0; i < 3; i++) {
-    const yy = y + 4 + i * 4;
-    ctx.beginPath();
-    ctx.moveTo(x + 1, yy);
-    ctx.bezierCurveTo(x + 5, yy - 0.2, x + 11, yy + 0.9, x + 15, yy + 0.1);
-    ctx.stroke();
-  }
-
-  // tiny knots / variation
-  if (((tx * 19 + ty * 11) % 29) === 0) {
-    ctx.globalAlpha = 0.18;
-    ctx.fillStyle = "rgba(60, 32, 12, 0.55)";
-    ctx.fillRect(x + 10, y + 9, 2, 1);
-    ctx.fillRect(x + 9, y + 10, 3, 1);
   }
   ctx.restore();
 
@@ -1928,57 +1955,62 @@ function drawWallTile(ctx: CanvasRenderingContext2D, x: number, y: number, tx: n
   ctx.fillStyle = "rgba(0,0,0,0.45)";
   ctx.fillRect(x, y + 13, 16, 3);
 
-  // Panel/brick texture: frequent horizontal lines + subtle vertical joints.
-  // Horizontal lines every ~3px
-  ctx.globalAlpha = 0.28;
-  ctx.strokeStyle = "rgba(6,10,22,0.65)";
+  // Brick/panel texture (AGGRESSIVE): dense horizontal + vertical mortar lines + speckle.
+  // Horizontal mortar every ~2–3px
   ctx.lineWidth = 1;
-  for (let yy = 2; yy <= 14; yy += 3) {
-    const wob = ((tx * 11 + ty * 7 + yy) % 3) - 1; // -1..1
+  for (let yy = 2; yy <= 14; yy += 2) {
+    const wob = ((tx * 13 + ty * 9 + yy) % 3) - 1; // -1..1
+    ctx.globalAlpha = yy % 4 === 0 ? 0.34 : 0.26;
+    ctx.strokeStyle = "rgba(2,6,23,0.78)";
     ctx.beginPath();
-    ctx.moveTo(x + 0.5, y + yy + 0.5);
-    ctx.lineTo(x + 15.5, y + yy + 0.5);
+    ctx.moveTo(x + 0.5, y + yy + 0.5 + wob * 0.15);
+    ctx.lineTo(x + 15.5, y + yy + 0.5 + wob * 0.15);
     ctx.stroke();
 
-    // faint highlight above the line for relief
-    ctx.globalAlpha = 0.10;
-    ctx.strokeStyle = "rgba(148,163,184,0.35)";
+    // highlight just above mortar line for relief
+    ctx.globalAlpha = 0.12;
+    ctx.strokeStyle = "rgba(226,232,240,0.30)";
     ctx.beginPath();
-    ctx.moveTo(x + 0.5, y + (yy - 1) + 0.5);
-    ctx.lineTo(x + 15.5, y + (yy - 1) + 0.5);
+    ctx.moveTo(x + 0.5, y + yy - 1 + 0.5);
+    ctx.lineTo(x + 15.5, y + yy - 1 + 0.5);
     ctx.stroke();
-
-    ctx.globalAlpha = 0.28;
-    ctx.strokeStyle = "rgba(6,10,22,0.65)";
-
-    // occasional tiny chip/speck to break flatness
-    if (((tx * 17 + ty * 13 + yy) % 19) === 0) {
-      ctx.globalAlpha = 0.14;
-      ctx.fillStyle = "rgba(226,232,240,0.55)";
-      ctx.fillRect(x + 2 + ((tx + yy) % 12), y + yy + wob, 1, 1);
-      ctx.globalAlpha = 0.28;
-    }
   }
 
-  // Vertical joints (subtle)
+  // Vertical joints every ~3–5px (staggered by tile coords)
   ctx.globalAlpha = 0.22;
-  ctx.strokeStyle = "rgba(2,6,23,0.65)";
-  const vx0 = (tx % 3) * 5 + 2; // 2,7,12
-  const vx1 = (vx0 + 6) % 15;
-  for (const vx of [vx0, vx1]) {
+  ctx.strokeStyle = "rgba(2,6,23,0.70)";
+  const joints = [2 + ((tx + ty) % 2), 7 + ((tx * 2 + ty) % 2), 12 - ((tx + ty) % 2)];
+  for (const vx of joints) {
     ctx.beginPath();
     ctx.moveTo(x + vx + 0.5, y + 1.5);
     ctx.lineTo(x + vx + 0.5, y + 14.5);
     ctx.stroke();
-    // tiny left highlight for relief
+
     ctx.globalAlpha = 0.10;
-    ctx.strokeStyle = "rgba(148,163,184,0.30)";
+    ctx.strokeStyle = "rgba(226,232,240,0.22)";
     ctx.beginPath();
     ctx.moveTo(x + vx - 1 + 0.5, y + 1.5);
     ctx.lineTo(x + vx - 1 + 0.5, y + 14.5);
     ctx.stroke();
+
     ctx.globalAlpha = 0.22;
-    ctx.strokeStyle = "rgba(2,6,23,0.65)";
+    ctx.strokeStyle = "rgba(2,6,23,0.70)";
+  }
+
+  // Speckle/noise texture (deterministic): tiny chips + soot
+  for (let i = 0; i < 10; i++) {
+    const nx = (i * 7 + tx * 11 + ty * 3) % 16;
+    const ny = (i * 5 + tx * 2 + ty * 13) % 16;
+    const n = hatchNoise(tx * 31 + nx * 3, ty * 17 + ny * 5);
+    if (n > 0.82) {
+      ctx.globalAlpha = 0.12;
+      ctx.fillStyle = "rgba(226,232,240,0.55)";
+      ctx.fillRect(x + nx, y + ny, 1, 1);
+    } else if (n < 0.14) {
+      ctx.globalAlpha = 0.10;
+      ctx.fillStyle = "rgba(2,6,23,0.85)";
+      ctx.fillRect(x + nx, y + ny, 1, 1);
+    }
   }
 
   // Corner shadow vibes (where walls meet floor / adjacent walls):
@@ -2108,37 +2140,66 @@ function drawDesk(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.fillRect(x + 5, y + 26, 4, 6);
   ctx.fillRect(x + 39, y + 26, 4, 6);
 
-  // monitor (with purple/pink glow)
+  // monitor (with bezel, screen gradient, reflection)
   ctx.save();
-  ctx.fillStyle = "#1E2233";
+  // bezel
+  const bezel = ctx.createLinearGradient(x + 18, y + 1, x + 32, y + 11);
+  bezel.addColorStop(0, "#2B3146");
+  bezel.addColorStop(1, "#12182B");
+  ctx.fillStyle = bezel;
   ctx.fillRect(x + 18, y + 1, 14, 10);
-  ctx.fillStyle = "#0B1020";
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = "rgba(226,232,240,0.18)";
+  ctx.strokeRect(x + 18.5, y + 1.5, 13, 9);
+  ctx.globalAlpha = 1;
+
+  // stand
+  const stand = ctx.createLinearGradient(x + 23, y + 11, x + 27, y + 14);
+  stand.addColorStop(0, "#0B1020");
+  stand.addColorStop(1, "#111827");
+  ctx.fillStyle = stand;
   ctx.fillRect(x + 23, y + 11, 4, 2);
   ctx.fillRect(x + 21, y + 13, 8, 1);
 
-  ctx.shadowBlur = 10;
+  // screen w/ glow
+  ctx.shadowBlur = 12;
   ctx.shadowColor = "rgba(236, 72, 153, 0.55)";
-  const scr = ctx.createLinearGradient(x + 18, y + 2, x + 32, y + 10);
+  const scr = ctx.createLinearGradient(x + 19, y + 2, x + 31, y + 9);
   scr.addColorStop(0, "#7C3AED");
+  scr.addColorStop(0.55, "#A855F7");
   scr.addColorStop(1, "#EC4899");
   ctx.fillStyle = scr;
   ctx.fillRect(x + 19, y + 2, 12, 7);
+  ctx.shadowBlur = 0;
+
+  // scanlines + specular reflection
+  ctx.globalAlpha = 0.16;
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  ctx.fillRect(x + 20, y + 3, 6, 1);
+  ctx.fillRect(x + 20, y + 5, 10, 1);
+  ctx.globalAlpha = 0.10;
+  for (let yy = 2; yy <= 8; yy += 2) ctx.fillRect(x + 19, y + yy, 12, 1);
+
   // reflection dot
   ctx.globalAlpha = 0.85;
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
   ctx.beginPath();
   ctx.arc(x + 22.5, y + 4.0, 0.9, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
-  ctx.shadowBlur = 0;
 
-  // keyboard hint
-  ctx.globalAlpha = 0.8;
-  ctx.fillStyle = "rgba(15,23,42,0.55)";
+  // keyboard (more detailed)
+  ctx.globalAlpha = 0.9;
+  const kb = ctx.createLinearGradient(x + 16, y + 15, x + 34, y + 19);
+  kb.addColorStop(0, "rgba(30,41,59,0.65)");
+  kb.addColorStop(1, "rgba(15,23,42,0.75)");
+  ctx.fillStyle = kb;
   ctx.fillRect(x + 16, y + 15, 18, 4);
   ctx.globalAlpha = 0.25;
-  ctx.fillStyle = "rgba(226,232,240,0.5)";
-  for (let i = 0; i < 6; i++) ctx.fillRect(x + 17 + i * 3, y + 16, 2, 1);
+  ctx.fillStyle = "rgba(226,232,240,0.55)";
+  for (let row = 0; row < 2; row++) {
+    for (let i = 0; i < 6; i++) ctx.fillRect(x + 17 + i * 3, y + 16 + row, 2, 1);
+  }
+  ctx.globalAlpha = 1;
 
   // coffee mug
   ctx.globalAlpha = 0.95;
