@@ -40,6 +40,10 @@ type CharacterRuntime = {
 
   // sparkle on new run
   sparkleUntilMs: number;
+
+  // social / activity
+  activityBubble: string | null; // emoji/text to show above head
+  activityUntilMs: number;
 };
 
 const TILE = 16;
@@ -1162,6 +1166,8 @@ export default function OfficePage() {
         typingFrame: 0,
         typingAcc: 0,
         sparkleUntilMs: 0,
+        activityBubble: null,
+        activityUntilMs: 0,
       };
       prevRunningRef.current[r.key] = false;
     }
@@ -1349,31 +1355,35 @@ export default function OfficePage() {
             } else if (roll < 0.55) {
               // Go to lounge — watch TV / play PlayStation
               const loungeDests = [
-                { tx: 21, ty: 16 }, // in front of TV on couch
-                { tx: 20, ty: 16 }, // couch left
-                { tx: 24, ty: 14 }, // near PlayStation
-                { tx: 19, ty: 17 }, // lounge corner
+                { tx: 21, ty: 16, act: "📺" },
+                { tx: 20, ty: 16, act: "📺" },
+                { tx: 24, ty: 14, act: "🎮" },
+                { tx: 19, ty: 17, act: "🎮" },
               ];
               const pick = loungeDests[Math.floor(Math.random() * loungeDests.length)];
               const dest = tileCenter(pick.tx, pick.ty);
               rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
               rt.goingToSeat = false;
               rt.anim = rt.path.length ? "walk" : "idle";
-              rt.nextDecisionMs = ms + randBetween(6000, 12000); // hang out longer
+              rt.activityBubble = pick.act;
+              rt.activityUntilMs = ms + randBetween(8000, 14000);
+              rt.nextDecisionMs = ms + randBetween(8000, 14000);
             } else if (roll < 0.70) {
               // Go to kitchen — get coffee/snack
               const kitchenDests = [
-                { tx: 20, ty: 4 },  // near vending
-                { tx: 24, ty: 4 },  // near counter
-                { tx: 27, ty: 4 },  // near cooler
-                { tx: 21, ty: 7 },  // coffee table
+                { tx: 20, ty: 4, act: "🍫" },  // vending snack
+                { tx: 24, ty: 4, act: "☕" },  // make coffee
+                { tx: 27, ty: 4, act: "💧" },  // water cooler
+                { tx: 21, ty: 7, act: "☕" },  // coffee table
               ];
               const pick = kitchenDests[Math.floor(Math.random() * kitchenDests.length)];
               const dest = tileCenter(pick.tx, pick.ty);
               rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
               rt.goingToSeat = false;
               rt.anim = rt.path.length ? "walk" : "idle";
-              rt.nextDecisionMs = ms + randBetween(4000, 8000);
+              rt.activityBubble = pick.act;
+              rt.activityUntilMs = ms + randBetween(5000, 9000);
+              rt.nextDecisionMs = ms + randBetween(5000, 9000);
             } else {
               // Wander around office randomly
               const officeDests = [
@@ -1485,6 +1495,57 @@ export default function OfficePage() {
       for (const { a, rt } of drawList) {
         if (a.status === "offline" && a.key !== "yuri") continue;
         drawCharacter(ctx, charImgs[a.key], rt!, a.status, a.label, a.key === selected);
+      }
+
+      // Social interaction: when 2 idle agents are close, show chat bubbles
+      for (let i = 0; i < drawList.length; i++) {
+        for (let j = i + 1; j < drawList.length; j++) {
+          const a = drawList[i], b = drawList[j];
+          if (!a.rt || !b.rt) continue;
+          if (a.rt.anim === "work" || b.rt.anim === "work") continue;
+          if (a.rt.anim === "walk" || b.rt.anim === "walk") continue;
+          const dist = Math.hypot(a.rt.x - b.rt.x, a.rt.y - b.rt.y);
+          if (dist < 28 && dist > 3) {
+            // Close and both idle — trigger chat
+            if (!a.rt.activityBubble && ms > a.rt.activityUntilMs) {
+              a.rt.activityBubble = "💬";
+              a.rt.activityUntilMs = ms + randBetween(3000, 6000);
+            }
+            if (!b.rt.activityBubble && ms > b.rt.activityUntilMs) {
+              b.rt.activityBubble = "💬";
+              b.rt.activityUntilMs = ms + randBetween(3000, 6000);
+            }
+          }
+        }
+      }
+
+      // Draw activity/chat bubbles
+      for (const { rt } of drawList) {
+        if (!rt || !rt.activityBubble) continue;
+        if (ms > rt.activityUntilMs) {
+          rt.activityBubble = null;
+          continue;
+        }
+        // Small rounded bubble above character
+        const bx = Math.round(rt.x);
+        const by = Math.round(rt.y - 34);
+        ctx.save();
+        ctx.font = "10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        // bubble background
+        const tw = ctx.measureText(rt.activityBubble).width + 6;
+        ctx.fillStyle = "rgba(255,255,255,0.85)";
+        ctx.beginPath();
+        ctx.roundRect(bx - tw / 2, by - 6, tw, 13, 3);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(0,0,0,0.2)";
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+        // emoji
+        ctx.fillStyle = "#000";
+        ctx.fillText(rt.activityBubble, bx, by + 1);
+        ctx.restore();
       }
 
       // sparkles
