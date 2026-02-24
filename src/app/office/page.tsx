@@ -1315,20 +1315,24 @@ const SITTING_OFFSET_Y = 4; // px: nudge character down into desk when sitting
 const SEATS: Record<RosterKey, { tx: number; ty: number; face: Dir }> = {
   // boss room
   yuri: { tx: 4, ty: 3, face: "down" },
+
   // main office (bottom-left)
+  // Keep two clear desk rows with a wider center aisle.
   glass: { tx: 2, ty: 9, face: "down" },
-  epstein: { tx: 7, ty: 9, face: "down" },
+  epstein: { tx: 8, ty: 9, face: "down" },
   jarvis: { tx: 2, ty: 12, face: "down" },
-  friday: { tx: 7, ty: 12, face: "down" },
+  friday: { tx: 8, ty: 12, face: "down" },
 };
 
 // Desk 2x2: placed so character tile is centered on desk top edge
 const DESK_POS: Record<RosterKey, { tx: number; ty: number }> = {
   yuri: { tx: 3, ty: 4 },
+
+  // Spread desks horizontally to avoid overlaps with utility props and to create a clean aisle.
   glass: { tx: 1, ty: 10 },
-  epstein: { tx: 6, ty: 10 },
+  epstein: { tx: 7, ty: 10 },
   jarvis: { tx: 1, ty: 13 },
-  friday: { tx: 6, ty: 13 },
+  friday: { tx: 7, ty: 13 },
 };
 
 function buildProps(): Prop[] {
@@ -1342,8 +1346,9 @@ function buildProps(): Prop[] {
   p.push({ kind: "plant", tx: 8, ty: 2 });
 
   // keep Yuri's real desk for activities/pathing, but add a visual "executive" desk + chair around it
-  p.push({ kind: "execDesk", tx: 2, ty: 4 });
-  p.push({ kind: "execChair", tx: 4, ty: 2 });
+  // visual executive desk vignette (kept separate from Yuri's functional desk to avoid overlap)
+  p.push({ kind: "execDesk", tx: 6, ty: 3 });
+  p.push({ kind: "execChair", tx: 7, ty: 2 });
   p.push({ kind: "rug", tx: 2, ty: 3 });
   p.push({ kind: "standingLamp", tx: 8, ty: 4 });
   p.push({ kind: "visitorSeat", tx: 6, ty: 5 });
@@ -1373,12 +1378,14 @@ function buildProps(): Prop[] {
   // decor main office
   p.push({ kind: "bookshelf", tx: 7, ty: 8 });
   p.push({ kind: "plant", tx: 1, ty: 8 });
-  p.push({ kind: "plant", tx: 8, ty: 13 });
+  // keep plants away from desk-side filing cabinets
+  p.push({ kind: "plant", tx: 4, ty: 13 });
 
   // plant corner (instagrammable) — cluster, non-blocking
-  p.push({ kind: "plantDeco", tx: 2, ty: 8 });
-  p.push({ kind: "plantDeco", tx: 3, ty: 8 });
-  p.push({ kind: "plantDeco", tx: 2, ty: 9 });
+  // moved off the main desk approach tiles so it doesn't visually crowd/overlap seats.
+  p.push({ kind: "plantDeco", tx: 4, ty: 8 });
+  p.push({ kind: "plantDeco", tx: 5, ty: 8 });
+  p.push({ kind: "plantDeco", tx: 4, ty: 9 });
 
   // mission control plaque — visual only (on the boss-room divider wall)
   p.push({ kind: "plaqueSign", tx: 1, ty: BOSS_WALL_Y, text: "MISSION CONTROL" });
@@ -1386,8 +1393,9 @@ function buildProps(): Prop[] {
   // main office wall decor + utility
   p.push({ kind: "whiteboard", tx: 0, ty: 10 });
   p.push({ kind: "frame", tx: 0, ty: 8 });
-  p.push({ kind: "trash", tx: 1, ty: 11 });
-  p.push({ kind: "trash", tx: 6, ty: 11 });
+  // trash cans (keep off desk footprints)
+  p.push({ kind: "trash", tx: 4, ty: 14 });
+  p.push({ kind: "trash", tx: 5, ty: 14 });
 
   // ceiling lights (non-blocking)
   p.push({ kind: "ceilingLight", tx: 6, ty: 3 });  // boss room
