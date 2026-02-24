@@ -767,10 +767,20 @@ function buildBlocked(props: Prop[]) {
     if (pr.kind === "plant") mark(pr.tx, pr.ty, 1, 1);
   }
 
-  // doors are passable
-  blocked[DOOR_MAIN_RIGHT.ty][DOOR_MAIN_RIGHT.tx] = false;
-  blocked[DOOR_KITCHEN_LOUNGE.ty][DOOR_KITCHEN_LOUNGE.tx] = false;
-  blocked[DOOR_BOSS.ty][DOOR_BOSS.tx] = false;
+  // doors are passable — ensure all 3 tiles of each door are clear
+  for (const d of DOOR_TILES) {
+    blocked[d.ty][d.tx] = false;
+    // vertical doors: clear ±1 in Y
+    if (d === DOOR_MAIN_RIGHT || d === DOOR_BOSS) {
+      if (d.ty - 1 >= 0) blocked[d.ty - 1][d.tx] = false;
+      if (d.ty + 1 < ROWS) blocked[d.ty + 1][d.tx] = false;
+    }
+    // horizontal doors: clear ±1 in X
+    if (d === DOOR_KITCHEN_LOUNGE) {
+      if (d.tx - 1 >= 0) blocked[d.ty][d.tx - 1] = false;
+      if (d.tx + 1 < COLS) blocked[d.ty][d.tx + 1] = false;
+    }
+  }
 
   // seat tiles must be passable
   for (const s of Object.values(SEATS)) blocked[s.ty][s.tx] = false;
@@ -1465,12 +1475,12 @@ export default function OfficePage() {
               rt.goingToSeat = true;
             }
 
-            if (kind === "coffee") destTile = pickNearbyWalkable(blocked, { tx: 28, ty: 2 }, 2);
-            if (kind === "gaming") destTile = pickNearbyWalkable(blocked, { tx: 20, ty: 15 }, 2);
-            if (kind === "watching_tv") destTile = pickNearbyWalkable(blocked, { tx: 24, ty: 12 }, 2);
+            if (kind === "coffee") destTile = pickNearbyWalkable(blocked, { tx: 28, ty: 4 }, 3, false);
+            if (kind === "gaming") destTile = pickNearbyWalkable(blocked, { tx: 20, ty: 15 }, 3, false);
+            if (kind === "watching_tv") destTile = pickNearbyWalkable(blocked, { tx: 24, ty: 13 }, 3, false);
             if (kind === "reading") {
-              const base = Math.random() < 0.5 ? { tx: 2, ty: 2 } : { tx: 11, ty: 11 };
-              destTile = pickNearbyWalkable(blocked, base, 2);
+              const base = Math.random() < 0.5 ? { tx: 3, ty: 4 } : { tx: 11, ty: 12 };
+              destTile = pickNearbyWalkable(blocked, base, 3, false);
             }
             if (kind === "wandering") destTile = pickRandomWalkable(blocked);
 
@@ -1519,6 +1529,20 @@ export default function OfficePage() {
               rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
               rt.target = dest;
               rt.anim = rt.path.length ? "walk" : "idle";
+
+              // fallback: if path not found, cancel activity and go back to desk
+              if (rt.path.length === 0) {
+                rt.activity = "desk";
+                rt.chatWith = null;
+                const seat = SEATS[a.key];
+                if (seat) {
+                  const seatDest = tileCenter(seat.tx, seat.ty);
+                  rt.path = aStar(blocked, { x: rt.x, y: rt.y }, seatDest);
+                  rt.target = seatDest;
+                  rt.goingToSeat = true;
+                  rt.anim = rt.path.length ? "walk" : "idle";
+                }
+              }
             }
 
             // next decision only after completing an activity (or if we fail to path)
