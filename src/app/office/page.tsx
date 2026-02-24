@@ -257,31 +257,38 @@ function deskSprite(): Sprite {
 }
 
 function bookshelfSprite(): Sprite {
-  // 32x32
+  // 32x32 — warm wood with varied book spines
   const _ = "";
-  const WOOD = "#8B6914";
-  const EDGE = "#6B4E0A";
+  const WOOD = "#7A5C1A";
+  const WOOD_L = "#967028";
+  const EDGE = "#5A3E0A";
+  const SHELF = "#6B4E14";
   const px: string[][] = [];
-  const books = ["#CC4444", "#4477AA", "#44AA66", "#CCAA33", "#9955AA", "#FF8844", "#22c55e", "#38bdf8"];
+  const books = [
+    ["#CC4444", "#AA3333"], // red
+    ["#4477AA", "#335588"], // blue
+    ["#44AA66", "#338855"], // green
+    ["#CCAA33", "#AA8822"], // yellow
+    ["#9955AA", "#774488"], // purple
+    ["#CC7744", "#AA5533"], // orange
+  ];
   for (let y = 0; y < 32; y++) {
     const row: string[] = [];
     for (let x = 0; x < 32; x++) {
-      if (x === 0 || x === 31 || y === 0 || y === 31) {
-        row.push(EDGE);
-        continue;
-      }
-      // shelves
-      if (y === 8 || y === 16 || y === 24) {
-        row.push(WOOD);
-        continue;
-      }
-      // book area
-      const shelfBand = y < 8 ? 0 : y < 16 ? 1 : y < 24 ? 2 : 3;
-      const idx = (Math.floor(x / 3) + shelfBand * 2) % books.length;
-      let c = books[idx];
-      if (x % 3 === 0) c = "#2a2a3a"; // separators
-      if ((x + y) % 17 === 0) c = "#e2e8f0"; // occasional label
-      row.push(c);
+      // frame
+      if (x === 0 || x === 31) { row.push(EDGE); continue; }
+      if (y === 0 || y === 31) { row.push(EDGE); continue; }
+      if (x === 1 || x === 30) { row.push(WOOD); continue; }
+      // shelves (horizontal planks)
+      if (y === 1 || y === 10 || y === 19 || y === 28) { row.push(SHELF); continue; }
+      if (y === 29 || y === 30) { row.push(WOOD_L); continue; } // base
+      // books — each book is 2-3px wide, full shelf height
+      const shelfZone = y < 10 ? 0 : y < 19 ? 1 : 2;
+      const bookIdx = (Math.floor((x - 2) / 4) + shelfZone * 3) % books.length;
+      const bookPair = books[bookIdx];
+      const inBook = (x - 2) % 4;
+      if (inBook === 0) { row.push("#1a1a2a"); continue; } // gap between books
+      row.push(inBook === 1 ? bookPair[1] : bookPair[0]);
     }
     px.push(row);
   }
@@ -431,6 +438,67 @@ function coolerSprite(): Sprite {
   return spriteFromPixels(px, 1);
 }
 
+function paintingSprite(): Sprite {
+  // 32x16 — landscape painting with frame
+  const _ = "";
+  const FR = "#6B4E14"; // brown frame
+  const SKY = "#6BA4D4";
+  const SKY2 = "#87BADC";
+  const HILL = "#5A9A4A";
+  const HILL2 = "#4A8A3A";
+  const GRS = "#6AAA5A";
+  const px: string[][] = [];
+  for (let y = 0; y < 16; y++) {
+    const row: string[] = [];
+    for (let x = 0; x < 32; x++) {
+      if (x <= 1 || x >= 30 || y <= 1 || y >= 14) { row.push(FR); continue; }
+      if (y < 6) row.push((x + y) % 3 === 0 ? SKY2 : SKY);
+      else if (y < 9) row.push(((x + y) % 5 < 2) ? HILL2 : HILL);
+      else row.push((x + y) % 4 === 0 ? GRS : HILL);
+    }
+    px.push(row);
+  }
+  return spriteFromPixels(px, 1);
+}
+
+function coffeeTableSprite(): Sprite {
+  // 16x16 — small round table
+  const _ = "";
+  const W = "#967028";
+  const D = "#7A5C1A";
+  const L = "#B08832";
+  const px: string[][] = Array.from({ length: 16 }, () => Array.from({ length: 16 }, () => _));
+  for (let y = 4; y <= 11; y++) {
+    for (let x = 3; x <= 12; x++) {
+      const dist = Math.hypot(x - 7.5, y - 7.5);
+      if (dist < 5) px[y][x] = y < 7 ? L : W;
+    }
+  }
+  // legs
+  px[12][4] = D; px[12][11] = D; px[13][4] = D; px[13][11] = D;
+  return spriteFromPixels(px, 1);
+}
+
+function counterSprite(): Sprite {
+  // 32x16 — kitchen counter
+  const _ = "";
+  const TOP = "#d4c4a0";
+  const BODY = "#a09070";
+  const EDGE = "#786850";
+  const px: string[][] = [];
+  for (let y = 0; y < 16; y++) {
+    const row: string[] = [];
+    for (let x = 0; x < 32; x++) {
+      if (y < 2) row.push(TOP);
+      else if (y === 2) row.push(EDGE);
+      else if (x === 0 || x === 31) row.push(EDGE);
+      else row.push(BODY);
+    }
+    px.push(row);
+  }
+  return spriteFromPixels(px, 1);
+}
+
 function monitorSprite(): Sprite {
   // 12x10 tiny monitor
   const _ = "";
@@ -456,7 +524,10 @@ type Prop =
   | { kind: "plant"; tx: number; ty: number }
   | { kind: "vending"; tx: number; ty: number }
   | { kind: "couch"; tx: number; ty: number }
-  | { kind: "cooler"; tx: number; ty: number };
+  | { kind: "cooler"; tx: number; ty: number }
+  | { kind: "painting"; tx: number; ty: number }
+  | { kind: "coffeeTable"; tx: number; ty: number }
+  | { kind: "counter"; tx: number; ty: number };
 
 function buildFloor(): FloorKind[][] {
   const map: FloorKind[][] = [];
@@ -510,18 +581,26 @@ function buildProps(): Prop[] {
   p.push({ kind: "desk", tx: DESK_POS.friday.tx, ty: DESK_POS.friday.ty, owner: "friday" });
 
   // decor main office
-  p.push({ kind: "bookshelf", tx: 11, ty: 12 });
+  p.push({ kind: "bookshelf", tx: 11, ty: 11 });
+  p.push({ kind: "plant", tx: 13, ty: 11 });
   p.push({ kind: "plant", tx: 13, ty: 18 });
+  p.push({ kind: "plant", tx: 1, ty: 15 });
 
-  // kitchen
+  // kitchen (top-right)
   p.push({ kind: "vending", tx: 18, ty: 2 });
+  p.push({ kind: "counter", tx: 22, ty: 2 });
   p.push({ kind: "cooler", tx: 28, ty: 2 });
   p.push({ kind: "plant", tx: 25, ty: 2 });
+  p.push({ kind: "coffeeTable", tx: 20, ty: 6 });
+  p.push({ kind: "plant", tx: 17, ty: 7 });
 
-  // lounge
+  // lounge (bottom-right)
   p.push({ kind: "couch", tx: 19, ty: 15 });
+  p.push({ kind: "coffeeTable", tx: 21, ty: 16 });
+  p.push({ kind: "painting", tx: 22, ty: 11 });
   p.push({ kind: "bookshelf", tx: 26, ty: 14 });
   p.push({ kind: "plant", tx: 28, ty: 18 });
+  p.push({ kind: "plant", tx: 17, ty: 18 });
 
   return p;
 }
@@ -577,6 +656,9 @@ function buildBlocked(props: Prop[]) {
     if (pr.kind === "vending") mark(pr.tx, pr.ty, 2, 2);
     if (pr.kind === "couch") mark(pr.tx, pr.ty, 2, 1);
     if (pr.kind === "cooler") mark(pr.tx, pr.ty, 1, 2);
+    if (pr.kind === "painting") {} // wall decor, no collision
+    if (pr.kind === "coffeeTable") mark(pr.tx, pr.ty, 1, 1);
+    if (pr.kind === "counter") mark(pr.tx, pr.ty, 2, 1);
     if (pr.kind === "plant") mark(pr.tx, pr.ty, 1, 1);
   }
 
@@ -737,6 +819,9 @@ type Sprites = {
   couch: Sprite;
   cooler: Sprite;
   monitor: Sprite;
+  painting: Sprite;
+  coffeeTable: Sprite;
+  counter: Sprite;
 };
 
 function buildSprites(): Sprites {
@@ -752,6 +837,9 @@ function buildSprites(): Sprites {
     couch: couchSprite(),
     cooler: coolerSprite(),
     monitor: monitorSprite(),
+    painting: paintingSprite(),
+    coffeeTable: coffeeTableSprite(),
+    counter: counterSprite(),
   };
 }
 
@@ -814,6 +902,9 @@ function drawWorld(
     if (pr.kind === "vending") drawAt(sprites.vending, pr.tx, pr.ty);
     if (pr.kind === "couch") drawAt(sprites.couch, pr.tx, pr.ty);
     if (pr.kind === "cooler") drawAt(sprites.cooler, pr.tx, pr.ty);
+    if (pr.kind === "painting") drawAt(sprites.painting, pr.tx, pr.ty);
+    if (pr.kind === "coffeeTable") drawAt(sprites.coffeeTable, pr.tx, pr.ty);
+    if (pr.kind === "counter") drawAt(sprites.counter, pr.tx, pr.ty);
   }
   for (const pr of props) {
     if (pr.kind === "plant") drawAt(sprites.plant, pr.tx, pr.ty);
