@@ -1475,11 +1475,11 @@ export default function OfficePage() {
               rt.goingToSeat = true;
             }
 
-            if (kind === "coffee") destTile = pickNearbyWalkable(blocked, { tx: 28, ty: 4 }, 3, false);
-            if (kind === "gaming") destTile = pickNearbyWalkable(blocked, { tx: 20, ty: 15 }, 3, false);
-            if (kind === "watching_tv") destTile = pickNearbyWalkable(blocked, { tx: 24, ty: 13 }, 3, false);
+            if (kind === "coffee") destTile = pickNearbyWalkable(blocked, { tx: 27, ty: 4 }, 3, false);
+            if (kind === "gaming") destTile = pickNearbyWalkable(blocked, { tx: 20, ty: 14 }, 3, false);
+            if (kind === "watching_tv") destTile = pickNearbyWalkable(blocked, { tx: 23, ty: 14 }, 3, false);
             if (kind === "reading") {
-              const base = Math.random() < 0.5 ? { tx: 3, ty: 4 } : { tx: 11, ty: 12 };
+              const base = Math.random() < 0.5 ? { tx: 5, ty: 4 } : { tx: 10, ty: 13 };
               destTile = pickNearbyWalkable(blocked, base, 3, false);
             }
             if (kind === "wandering") destTile = pickRandomWalkable(blocked);
