@@ -614,6 +614,162 @@ function monitorSprite(): Sprite {
   return spriteFromPixels(px, 1);
 }
 
+function whiteboardSprite(): Sprite {
+  // 32x16 — clean board with marker scribbles
+  const _ = "";
+  const FR = "#cbd5e1";
+  const SH = "#94a3b8";
+  const W = "#f8fafc";
+  const px: string[][] = [];
+  for (let y = 0; y < 16; y++) {
+    const row: string[] = [];
+    for (let x = 0; x < 32; x++) {
+      if (x === 0 || y === 0 || x === 31 || y === 15) { row.push(SH); continue; }
+      if (x === 1 || y === 1 || x === 30 || y === 14) { row.push(FR); continue; }
+      let c = W;
+      // a little grime/texture
+      if ((x * 11 + y * 17) % 67 === 0) c = "#e2e8f0";
+      // marker lines
+      if (y === 5 && x > 4 && x < 26 && x % 3 !== 0) c = "#22c55e";
+      if (y === 7 && x > 6 && x < 28 && x % 4 !== 0) c = "#38bdf8";
+      if (y === 10 && x > 5 && x < 18 && x % 2 === 0) c = "#f59e0b";
+      if (x === 8 && y > 3 && y < 12) c = "#ef4444";
+      row.push(c);
+    }
+    px.push(row);
+  }
+  return spriteFromPixels(px, 1);
+}
+
+function waterDispenserSprite(): Sprite {
+  // 16x32 — blue bottle on white base
+  const _ = "";
+  const B1 = "#93c5fd";
+  const B2 = "#60a5fa";
+  const W1 = "#e2e8f0";
+  const W2 = "#cbd5e1";
+  const D = "#64748b";
+  const px: string[][] = Array.from({ length: 32 }, () => Array.from({ length: 16 }, () => _));
+
+  // bottle
+  for (let y = 1; y <= 12; y++) for (let x = 5; x <= 10; x++) px[y][x] = (x + y) % 3 === 0 ? B2 : B1;
+  for (let x = 6; x <= 9; x++) px[0 + 1][x] = D;
+  // base
+  for (let y = 13; y <= 29; y++) for (let x = 3; x <= 12; x++) px[y][x] = W1;
+  for (let y = 14; y <= 28; y++) for (let x = 4; x <= 11; x++) px[y][x] = W2;
+  // outline
+  for (let y = 13; y <= 29; y++) { px[y][3] = D; px[y][12] = D; }
+  for (let x = 3; x <= 12; x++) { px[13][x] = D; px[29][x] = D; }
+  // taps
+  px[20][6] = "#0f172a";
+  px[20][9] = "#0f172a";
+  px[21][6] = "#0f172a";
+  px[21][9] = "#0f172a";
+  // drip tray
+  for (let x = 5; x <= 10; x++) px[24][x] = "#94a3b8";
+
+  // feet
+  for (let y = 30; y <= 31; y++) for (let x = 4; x <= 11; x++) px[y][x] = D;
+
+  return spriteFromPixels(px, 1);
+}
+
+function rugSprite(): Sprite {
+  // 48x32 — warm lounge rug, soft border
+  const _ = "";
+  const A = "#c08457";
+  const B = "#b36a45";
+  const EDGE = "#8f4c32";
+  const px: string[][] = Array.from({ length: 32 }, () => Array.from({ length: 48 }, () => _));
+  for (let y = 0; y < 32; y++) {
+    for (let x = 0; x < 48; x++) {
+      const inR = x >= 1 && x <= 46 && y >= 1 && y <= 30;
+      if (!inR) continue;
+      const onEdge = x === 1 || x === 46 || y === 1 || y === 30;
+      let c = (x + y) % 2 === 0 ? A : B;
+      if ((x * 9 + y * 13) % 53 === 0) c = "#d6a274";
+      if (onEdge) c = EDGE;
+      px[y][x] = c;
+    }
+  }
+  // small center motif
+  for (let y = 12; y <= 19; y++) for (let x = 20; x <= 27; x++) px[y][x] = (x + y) % 3 === 0 ? "#fbbf24" : "#fde68a";
+  return spriteFromPixels(px, 1);
+}
+
+function ceilingLightSprite(): Sprite {
+  // 16x16 — tiny fixture
+  const _ = "";
+  const R = "#1a2030";
+  const W = "#f8fafc";
+  const Y = "#fde68a";
+  const px: string[][] = Array.from({ length: 16 }, () => Array.from({ length: 16 }, () => _));
+  // outer ring
+  for (let y = 5; y <= 10; y++) for (let x = 4; x <= 11; x++) px[y][x] = R;
+  for (let y = 6; y <= 9; y++) for (let x = 5; x <= 10; x++) px[y][x] = W;
+  for (let y = 7; y <= 8; y++) for (let x = 6; x <= 9; x++) px[y][x] = Y;
+  return spriteFromPixels(px, 1);
+}
+
+function frameSprite(accent = "#60a5fa"): Sprite {
+  // 16x16 — little wall frame
+  const _ = "";
+  const FR = "#6b4e14";
+  const SH = "#5a3e0a";
+  const BG = "#0b1220";
+  const px: string[][] = Array.from({ length: 16 }, () => Array.from({ length: 16 }, () => _));
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      if (x === 0 || y === 0 || x === 15 || y === 15) { px[y][x] = SH; continue; }
+      if (x === 1 || y === 1 || x === 14 || y === 14) { px[y][x] = FR; continue; }
+      let c = BG;
+      if ((x + y) % 5 === 0) c = accent;
+      if (y > 9 && x > 3 && x < 12) c = "#22c55e";
+      px[y][x] = c;
+    }
+  }
+  return spriteFromPixels(px, 1);
+}
+
+function wallClockSprite(): Sprite {
+  // 16x16 — analog clock face
+  const _ = "";
+  const R = "#1a2030";
+  const W = "#f8fafc";
+  const G = "#94a3b8";
+  const px: string[][] = Array.from({ length: 16 }, () => Array.from({ length: 16 }, () => _));
+  for (let y = 2; y <= 13; y++) {
+    for (let x = 2; x <= 13; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5);
+      if (d <= 6.5) px[y][x] = W;
+      if (d >= 6.0 && d <= 6.8) px[y][x] = R;
+      if (d <= 1.2) px[y][x] = G;
+    }
+  }
+  // hands (static-ish)
+  for (let y = 5; y <= 7; y++) px[y][8] = R;
+  for (let x = 8; x <= 11; x++) px[8][x] = R;
+  return spriteFromPixels(px, 1);
+}
+
+function trashSprite(): Sprite {
+  // 16x16 — small bin
+  const _ = "";
+  const D = "#1f2937";
+  const M = "#334155";
+  const HI = "#475569";
+  const px: string[][] = Array.from({ length: 16 }, () => Array.from({ length: 16 }, () => _));
+  for (let y = 4; y <= 13; y++) {
+    for (let x = 4; x <= 11; x++) {
+      let c = (x + y) % 7 === 0 ? HI : M;
+      if (y === 4 || y === 13 || x === 4 || x === 11) c = D;
+      px[y][x] = c;
+    }
+  }
+  for (let x = 5; x <= 10; x++) px[3][x] = D;
+  return spriteFromPixels(px, 1);
+}
+
 // --- World model ---
 
 type FloorKind = "wood" | "beige" | "carpet";
@@ -626,6 +782,13 @@ type Prop =
   | { kind: "couch"; tx: number; ty: number }
   | { kind: "cooler"; tx: number; ty: number }
   | { kind: "painting"; tx: number; ty: number }
+  | { kind: "whiteboard"; tx: number; ty: number }
+  | { kind: "waterDispenser"; tx: number; ty: number }
+  | { kind: "rug"; tx: number; ty: number }
+  | { kind: "ceilingLight"; tx: number; ty: number }
+  | { kind: "frame"; tx: number; ty: number }
+  | { kind: "wallClock"; tx: number; ty: number }
+  | { kind: "trash"; tx: number; ty: number }
   | { kind: "coffeeTable"; tx: number; ty: number }
   | { kind: "counter"; tx: number; ty: number }
   | { kind: "tv"; tx: number; ty: number }
@@ -688,20 +851,38 @@ function buildProps(): Prop[] {
   p.push({ kind: "plant", tx: 13, ty: 18 });
   p.push({ kind: "plant", tx: 1, ty: 15 });
 
+  // main office wall decor + utility
+  p.push({ kind: "whiteboard", tx: 0, ty: 14 });
+  p.push({ kind: "frame", tx: 0, ty: 12 });
+  p.push({ kind: "frame", tx: 14, ty: 12 });
+  p.push({ kind: "trash", tx: 1, ty: 14 });
+  p.push({ kind: "trash", tx: 6, ty: 14 });
+  p.push({ kind: "trash", tx: 1, ty: 18 });
+  p.push({ kind: "trash", tx: 6, ty: 18 });
+
+  // ceiling lights (non-blocking)
+  p.push({ kind: "ceilingLight", tx: 6, ty: 3 });   // boss room
+  p.push({ kind: "ceilingLight", tx: 6, ty: 14 });  // main office
+  p.push({ kind: "ceilingLight", tx: 10, ty: 17 }); // main office
+
   // kitchen (top-right)
   p.push({ kind: "vending", tx: 18, ty: 2 });
   p.push({ kind: "counter", tx: 22, ty: 2 });
   p.push({ kind: "cooler", tx: 28, ty: 2 });
+  p.push({ kind: "waterDispenser", tx: 27, ty: 4 });
   p.push({ kind: "plant", tx: 25, ty: 2 });
   p.push({ kind: "coffeeTable", tx: 20, ty: 6 });
   p.push({ kind: "plant", tx: 17, ty: 7 });
+  p.push({ kind: "ceilingLight", tx: 22, ty: 4 }); // kitchen
+  p.push({ kind: "frame", tx: 19, ty: 0 });
 
   // lounge (bottom-right) — TV + PlayStation + couch
-  p.push({ kind: "tv", tx: 24, ty: 12 });          // TV on wall (away from door)
-  p.push({ kind: "playstation", tx: 25, ty: 13 }); // PS under TV
-  p.push({ kind: "couch", tx: 20, ty: 15 });       // couch facing TV
-  p.push({ kind: "coffeeTable", tx: 22, ty: 15 }); // table between couch and TV
-  p.push({ kind: "bookshelf", tx: 26, ty: 12 });
+  // Lounge - living room layout: TV on wall, couch facing it, coffee table between
+  p.push({ kind: "tv", tx: 22, ty: 12 });           // TV centered on wall
+  p.push({ kind: "playstation", tx: 22, ty: 13 });  // PS console under TV
+  p.push({ kind: "coffeeTable", tx: 22, ty: 15 });  // coffee table in front of couch
+  p.push({ kind: "couch", tx: 21, ty: 17 });        // couch facing TV (further back)
+  p.push({ kind: "bookshelf", tx: 27, ty: 12 });    // bookshelf on right wall, out of the way
   p.push({ kind: "plant", tx: 28, ty: 18 });
   p.push({ kind: "plant", tx: 17, ty: 18 });
 
@@ -1470,16 +1651,16 @@ export default function OfficePage() {
               const spot = spots[Math.floor(Math.random() * spots.length)];
               destTile = pickNearbyWalkable(blocked, spot, 1, false);
             }
-            // 🎮 Gaming: sit in front of PlayStation (25,13) — face the TV
-            if (kind === "gaming") destTile = pickNearbyWalkable(blocked, { tx: 25, ty: 14 }, 1, false);
-            // 📺 Watch TV: sit on couch (20,15) facing TV at (24,12)
-            if (kind === "watching_tv") destTile = pickNearbyWalkable(blocked, { tx: 20, ty: 14 }, 1, false);
+            // 🎮 Gaming: sit in front of PlayStation (22,13) — between PS and coffee table
+            if (kind === "gaming") destTile = pickNearbyWalkable(blocked, { tx: 22, ty: 14 }, 1, false);
+            // 📺 Watch TV: sit on/near couch (21,17) facing TV at (22,12)
+            if (kind === "watching_tv") destTile = pickNearbyWalkable(blocked, { tx: 21, ty: 16 }, 1, false);
             // 📖 Reading: stand in front of a bookshelf
             if (kind === "reading") {
               const spots = [
                 { tx: 4, ty: 4 },   // in front of bookshelf (2,2)
                 { tx: 11, ty: 13 }, // in front of bookshelf (11,11)
-                { tx: 26, ty: 14 }, // in front of bookshelf (26,12)
+                { tx: 27, ty: 14 }, // in front of bookshelf (27,12)
               ];
               const spot = spots[Math.floor(Math.random() * spots.length)];
               destTile = pickNearbyWalkable(blocked, spot, 1, false);
