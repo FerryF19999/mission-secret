@@ -933,7 +933,8 @@ function buildProps(): Prop[] {
   // Lounge - living room layout: TV on wall, couch facing it, coffee table between
   p.push({ kind: "tv", tx: 22, ty: 12 });           // TV centered on wall
   p.push({ kind: "playstation", tx: 22, ty: 13 });  // PS console under TV
-  p.push({ kind: "neonSign", tx: 24, ty: 11, text: "GAME ON" });
+  // Move neon sign to the right side of the lounge wall so it never overlaps the LOUNGE label
+  p.push({ kind: "neonSign", tx: 27, ty: 11, text: "GAME ON" });
   p.push({ kind: "rug", tx: 20, ty: 14 });          // warm rug under seating
   p.push({ kind: "coffeeTable", tx: 22, ty: 15 });  // coffee table in front of couch
   p.push({ kind: "couch", tx: 21, ty: 17 });        // couch facing TV (further back)
@@ -1185,9 +1186,10 @@ function drawKitchenClock(ctx: CanvasRenderingContext2D) {
   ctx.save();
   ctx.globalAlpha = 0.92;
   ctx.fillStyle = "rgba(0,0,0,0.6)";
-  ctx.fillRect(x - 24, y - 7, 48, 14);
+  // Wider box so "01:30 WIB" never clips
+  ctx.fillRect(x - 30, y - 7, 60, 14);
   ctx.strokeStyle = "rgba(255,255,255,0.25)";
-  ctx.strokeRect(x - 24.5, y - 7.5, 49, 15);
+  ctx.strokeRect(x - 30.5, y - 7.5, 61, 15);
   ctx.font = "bold 7px ui-monospace, SFMono-Regular, Menlo, Monaco";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -1768,11 +1770,13 @@ function drawWorld(
     ctx.fillText(text, x + 11, y + 6);
     ctx.restore();
   };
-  // Place labels in open space so they don't overlap props/agent labels
-  plaque(5, 10, "MAIN OFFICE", "rgba(56,189,248,0.95)");
-  plaque(22, 3, "KITCHEN", "rgba(34,197,94,0.95)");
-  plaque(18, 11, "LOUNGE", "rgba(251,191,36,0.95)");
-  plaque(5, 2, "BOSS ROOM", "rgba(244,114,182,0.95)");
+  // Place labels on guaranteed-empty wall tiles (never used by props/agents)
+  // - Top rooms: y=0 (outer wall)
+  // - Bottom rooms: y=9/10 wall bands (room separators)
+  plaque(2, 9, "MAIN OFFICE", "rgba(56,189,248,0.95)");
+  plaque(23, 0, "KITCHEN", "rgba(34,197,94,0.95)");
+  plaque(17, 10, "LOUNGE", "rgba(251,191,36,0.95)");
+  plaque(2, 0, "BOSS ROOM", "rgba(244,114,182,0.95)");
 }
 
 function drawCharacter(
@@ -2182,7 +2186,7 @@ export default function OfficePage() {
             // 📖 Reading: stand in front of a bookshelf
             if (kind === "reading") {
               const spots = [
-                { tx: 4, ty: 4 },   // in front of bookshelf (2,2)
+                { tx: 3, ty: 4 },   // in front of bookshelf (2,2)
                 { tx: 11, ty: 13 }, // in front of bookshelf (11,11)
                 { tx: 27, ty: 14 }, // in front of bookshelf (27,12)
               ];
