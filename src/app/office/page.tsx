@@ -1333,7 +1333,12 @@ export default function OfficePage() {
             const step = Math.min(dist, speed * dt);
             rt.x += (dx / dist) * step;
             rt.y += (dy / dist) * step;
-            rt.dir = dirFromDelta(dx, dy);
+            const newDir = dirFromDelta(dx, dy);
+            if (newDir !== rt.dir) {
+              rt.walkFrame = 0; // reset walk cycle on direction change
+              rt.walkAcc = 0;
+            }
+            rt.dir = newDir;
           }
 
           if (dist < 1.2) rt.path.shift();
