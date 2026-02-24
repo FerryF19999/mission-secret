@@ -1745,56 +1745,84 @@ function buildSprites(): Sprites {
 }
 
 function drawFloorWoodTile(ctx: CanvasRenderingContext2D, x: number, y: number, tx: number, ty: number) {
-  // warm planks + grain (Stardew-ish), light from top-left
+  // Wood planks with visible grain + seams; each plank has a top-left highlight and bottom-right shadow.
   const g = ctx.createLinearGradient(x, y, x + 16, y + 16);
-  g.addColorStop(0, "#D2A24B");
-  g.addColorStop(0.45, "#B68434");
-  g.addColorStop(1, "#8C5B18");
+  g.addColorStop(0, "#D8A84E");
+  g.addColorStop(0.45, "#B98635");
+  g.addColorStop(1, "#7A4B12");
   ctx.fillStyle = g;
   ctx.fillRect(x, y, 16, 16);
 
   // plank seams (vary with tile coord so it doesn't look tiled)
   const seamA = ((tx * 3 + ty) % 3) + 4; // 4..6
   const seamB = seamA + 5 + ((tx + ty) % 2); // ~10..12
-  ctx.strokeStyle = "rgba(53, 29, 8, 0.45)";
+
+  // seams (dark) + per-plank edge relief (light on left/top-left, shadow on right/bottom-right)
+  ctx.save();
   ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.50;
+  ctx.strokeStyle = "rgba(44, 24, 8, 0.65)";
   ctx.beginPath();
-  ctx.moveTo(x + seamA + 0.5, y + 0.5);
-  ctx.lineTo(x + seamA + 0.5, y + 15.5);
-  ctx.moveTo(x + seamB + 0.5, y + 0.5);
-  ctx.lineTo(x + seamB + 0.5, y + 15.5);
+  for (const s of [seamA, seamB]) {
+    ctx.moveTo(x + s + 0.5, y + 0.5);
+    ctx.lineTo(x + s + 0.5, y + 15.5);
+  }
   ctx.stroke();
 
-  // soft grain
+  // subtle highlight on top-left edge of each plank
+  ctx.globalAlpha = 0.16;
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  ctx.fillRect(x + 0, y + 0, 16, 1);
+  // highlight just left of seams
+  ctx.fillRect(x + seamA - 1, y + 0, 1, 16);
+  ctx.fillRect(x + seamB - 1, y + 0, 1, 16);
+
+  // subtle shadow on bottom-right edge of each plank
+  ctx.globalAlpha = 0.14;
+  ctx.fillStyle = "rgba(0,0,0,0.50)";
+  ctx.fillRect(x + 0, y + 15, 16, 1);
+  ctx.fillRect(x + seamA + 1, y + 0, 1, 16);
+  ctx.fillRect(x + seamB + 1, y + 0, 1, 16);
+  ctx.restore();
+
+  // grain: wavy light + darker growth rings
   ctx.save();
-  ctx.globalAlpha = 0.22;
-  ctx.strokeStyle = "rgba(255, 241, 205, 0.35)";
   ctx.lineWidth = 0.6;
-  for (let i = 0; i < 4; i++) {
-    const yy = y + 3 + i * 3 + (((tx + ty + i) % 3) - 1) * 0.3;
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = "rgba(255, 241, 205, 0.40)";
+  for (let i = 0; i < 5; i++) {
+    const yy = y + 2 + i * 3 + (((tx * 2 + ty + i) % 3) - 1) * 0.35;
     ctx.beginPath();
     ctx.moveTo(x + 1, yy);
-    ctx.bezierCurveTo(x + 5, yy + 0.6, x + 11, yy - 0.4, x + 15, yy + 0.2);
+    ctx.bezierCurveTo(x + 6, yy + 0.8, x + 10, yy - 0.6, x + 15, yy + 0.3);
     ctx.stroke();
   }
-  ctx.globalAlpha = 0.16;
-  ctx.strokeStyle = "rgba(53, 29, 8, 0.35)";
+  ctx.globalAlpha = 0.18;
+  ctx.strokeStyle = "rgba(50, 28, 10, 0.40)";
   for (let i = 0; i < 3; i++) {
     const yy = y + 4 + i * 4;
     ctx.beginPath();
     ctx.moveTo(x + 1, yy);
-    ctx.lineTo(x + 15, yy);
+    ctx.bezierCurveTo(x + 5, yy - 0.2, x + 11, yy + 0.9, x + 15, yy + 0.1);
     ctx.stroke();
+  }
+
+  // tiny knots / variation
+  if (((tx * 19 + ty * 11) % 29) === 0) {
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = "rgba(60, 32, 12, 0.55)";
+    ctx.fillRect(x + 10, y + 9, 2, 1);
+    ctx.fillRect(x + 9, y + 10, 3, 1);
   }
   ctx.restore();
 
-  // bevel highlight + wear
+  // tile bevel to keep the whole room crisp
   ctx.save();
-  ctx.globalAlpha = 0.22;
+  ctx.globalAlpha = 0.18;
   ctx.fillStyle = "rgba(255,255,255,0.35)";
   ctx.fillRect(x, y, 16, 1);
   ctx.fillRect(x, y, 1, 16);
-  ctx.globalAlpha = 0.18;
+  ctx.globalAlpha = 0.14;
   ctx.fillStyle = "rgba(0,0,0,0.35)";
   ctx.fillRect(x, y + 15, 16, 1);
   ctx.fillRect(x + 15, y, 1, 16);
@@ -1841,50 +1869,136 @@ function drawFloorKitchenTile(ctx: CanvasRenderingContext2D, x: number, y: numbe
 }
 
 function drawFloorCarpetTile(ctx: CanvasRenderingContext2D, x: number, y: number, tx: number, ty: number) {
+  // Lounge carpet: avoid flat blue — add weave + mottled variation.
   const g = ctx.createLinearGradient(x, y, x + 16, y + 16);
   g.addColorStop(0, "#6AA4B7");
-  g.addColorStop(1, "#3F6F86");
+  g.addColorStop(1, "#2F6078");
   ctx.fillStyle = g;
   ctx.fillRect(x, y, 16, 16);
 
-  // weave
+  // mottled patches (deterministic-ish from coords)
   ctx.save();
-  ctx.globalAlpha = 0.14;
-  ctx.fillStyle = "rgba(15,23,42,0.8)";
+  const n0 = hatchNoise(tx * 37 + ty * 19, ty * 13 + tx * 7);
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = n0 > 0.55 ? "rgba(255,255,255,0.25)" : "rgba(2,6,23,0.35)";
+  ctx.fillRect(x + 1, y + 1, 14, 14);
+
+  // weave: alternating dots + tiny dashes
+  ctx.globalAlpha = 0.16;
+  ctx.fillStyle = "rgba(15,23,42,0.85)";
   for (let yy = 0; yy < 16; yy += 2) {
     for (let xx = (yy + tx + ty) % 4; xx < 16; xx += 4) {
       ctx.fillRect(x + xx, y + yy, 1, 1);
+      if (((xx + yy + tx) % 7) === 0) ctx.fillRect(x + xx + 1, y + yy, 1, 1);
     }
   }
+
+  // subtle light direction
+  ctx.globalAlpha = 0.10;
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.fillRect(x, y, 16, 1);
+  ctx.fillRect(x, y, 1, 16);
+  ctx.globalAlpha = 0.10;
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillRect(x, y + 15, 16, 1);
+  ctx.fillRect(x + 15, y, 1, 16);
+
   ctx.restore();
 }
 
 function drawWallTile(ctx: CanvasRenderingContext2D, x: number, y: number, tx: number, ty: number) {
-  const g = ctx.createLinearGradient(x, y, x + 16, y + 16);
-  g.addColorStop(0, "#3A405A");
-  g.addColorStop(0.5, "#2C3146");
-  g.addColorStop(1, "#1A1D2C");
+  // Dark navy/charcoal wall with visible panel/brick texture + vertical depth shading.
+  // Depth: top slightly lighter, bottom slightly darker.
+  const tY = clamp(ty / (ROWS - 1), 0, 1);
+
+  // Base gradient (navy → charcoal)
+  const g = ctx.createLinearGradient(x, y, x, y + 16);
+  g.addColorStop(0, "#2d2d44");
+  g.addColorStop(0.55, "#202037");
+  g.addColorStop(1, "#1a1a2e");
   ctx.fillStyle = g;
   ctx.fillRect(x, y, 16, 16);
 
-  // subtle panel/brick lines
+  // Global depth shading (scene-level): subtle lift near top, heavier near bottom.
   ctx.save();
-  ctx.globalAlpha = 0.35;
-  ctx.strokeStyle = "rgba(11, 15, 30, 0.55)";
-  ctx.lineWidth = 1;
-  const vx = (tx % 2 === 0) ? 6 : 9;
-  ctx.beginPath();
-  ctx.moveTo(x + vx + 0.5, y + 1.5);
-  ctx.lineTo(x + vx + 0.5, y + 14.5);
-  ctx.moveTo(x + 0.5, y + 5.5);
-  ctx.lineTo(x + 15.5, y + 5.5);
-  ctx.moveTo(x + 0.5, y + 11.5);
-  ctx.lineTo(x + 15.5, y + 11.5);
-  ctx.stroke();
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = "rgba(255,255,255,0.20)";
+  ctx.fillRect(x, y, 16, 2);
+  ctx.globalAlpha = 0.12 + tY * 0.16;
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fillRect(x, y + 13, 16, 3);
 
-  // top-left bevel highlight
+  // Panel/brick texture: frequent horizontal lines + subtle vertical joints.
+  // Horizontal lines every ~3px
+  ctx.globalAlpha = 0.28;
+  ctx.strokeStyle = "rgba(6,10,22,0.65)";
+  ctx.lineWidth = 1;
+  for (let yy = 2; yy <= 14; yy += 3) {
+    const wob = ((tx * 11 + ty * 7 + yy) % 3) - 1; // -1..1
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, y + yy + 0.5);
+    ctx.lineTo(x + 15.5, y + yy + 0.5);
+    ctx.stroke();
+
+    // faint highlight above the line for relief
+    ctx.globalAlpha = 0.10;
+    ctx.strokeStyle = "rgba(148,163,184,0.35)";
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, y + (yy - 1) + 0.5);
+    ctx.lineTo(x + 15.5, y + (yy - 1) + 0.5);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.28;
+    ctx.strokeStyle = "rgba(6,10,22,0.65)";
+
+    // occasional tiny chip/speck to break flatness
+    if (((tx * 17 + ty * 13 + yy) % 19) === 0) {
+      ctx.globalAlpha = 0.14;
+      ctx.fillStyle = "rgba(226,232,240,0.55)";
+      ctx.fillRect(x + 2 + ((tx + yy) % 12), y + yy + wob, 1, 1);
+      ctx.globalAlpha = 0.28;
+    }
+  }
+
+  // Vertical joints (subtle)
   ctx.globalAlpha = 0.22;
-  ctx.strokeStyle = "rgba(226,232,240,0.35)";
+  ctx.strokeStyle = "rgba(2,6,23,0.65)";
+  const vx0 = (tx % 3) * 5 + 2; // 2,7,12
+  const vx1 = (vx0 + 6) % 15;
+  for (const vx of [vx0, vx1]) {
+    ctx.beginPath();
+    ctx.moveTo(x + vx + 0.5, y + 1.5);
+    ctx.lineTo(x + vx + 0.5, y + 14.5);
+    ctx.stroke();
+    // tiny left highlight for relief
+    ctx.globalAlpha = 0.10;
+    ctx.strokeStyle = "rgba(148,163,184,0.30)";
+    ctx.beginPath();
+    ctx.moveTo(x + vx - 1 + 0.5, y + 1.5);
+    ctx.lineTo(x + vx - 1 + 0.5, y + 14.5);
+    ctx.stroke();
+    ctx.globalAlpha = 0.22;
+    ctx.strokeStyle = "rgba(2,6,23,0.65)";
+  }
+
+  // Corner shadow vibes (where walls meet floor / adjacent walls):
+  // strong bottom band + slight right band. (We can't cheaply detect neighbors here; stylize per-tile.)
+  ctx.globalAlpha = 0.10 + tY * 0.10;
+  const bottom = ctx.createLinearGradient(x, y + 10, x, y + 16);
+  bottom.addColorStop(0, "rgba(2,6,23,0.0)");
+  bottom.addColorStop(1, "rgba(2,6,23,0.55)");
+  ctx.fillStyle = bottom;
+  ctx.fillRect(x, y + 10, 16, 6);
+
+  const side = ctx.createLinearGradient(x + 10, y, x + 16, y);
+  side.addColorStop(0, "rgba(2,6,23,0.0)");
+  side.addColorStop(1, "rgba(2,6,23,0.35)");
+  ctx.fillStyle = side;
+  ctx.fillRect(x + 10, y, 6, 16);
+
+  // Bevel highlight (top-left)
+  ctx.globalAlpha = 0.18;
+  ctx.strokeStyle = "rgba(226,232,240,0.25)";
   ctx.beginPath();
   ctx.moveTo(x + 0.5, y + 0.5);
   ctx.lineTo(x + 15.5, y + 0.5);
@@ -1892,21 +2006,24 @@ function drawWallTile(ctx: CanvasRenderingContext2D, x: number, y: number, tx: n
   ctx.lineTo(x + 0.5, y + 15.5);
   ctx.stroke();
 
-  // bottom-right shadow
-  ctx.globalAlpha = 0.20;
-  ctx.strokeStyle = "rgba(2,6,23,0.65)";
-  ctx.beginPath();
-  ctx.moveTo(x + 0.5, y + 15.5);
-  ctx.lineTo(x + 15.5, y + 15.5);
-  ctx.moveTo(x + 15.5, y + 0.5);
-  ctx.lineTo(x + 15.5, y + 15.5);
-  ctx.stroke();
   ctx.restore();
 }
 
 function drawDesk(ctx: CanvasRenderingContext2D, x: number, y: number) {
   // 48x32
   ctx.save();
+
+  // shadow under entire desk (ground contact)
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  const sh = ctx.createRadialGradient(x + 24, y + 30, 6, x + 24, y + 30, 26);
+  sh.addColorStop(0, "rgba(2,6,23,0.55)");
+  sh.addColorStop(1, "rgba(2,6,23,0.0)");
+  ctx.fillStyle = sh;
+  ctx.beginPath();
+  ctx.ellipse(x + 24, y + 30, 22, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 
   // desk body
   const body = ctx.createLinearGradient(x, y + 8, x, y + 30);
@@ -1916,12 +2033,31 @@ function drawDesk(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.fillStyle = body;
   ctx.fillRect(x + 2, y + 10, 44, 18);
 
-  // top surface
+  // top surface (lighter) + subtle grain
   const top = ctx.createLinearGradient(x, y + 6, x + 48, y + 14);
-  top.addColorStop(0, "#996133");
+  top.addColorStop(0, "#A66B38");
   top.addColorStop(1, "#6E4222");
   ctx.fillStyle = top;
   ctx.fillRect(x + 2, y + 8, 44, 6);
+
+  ctx.save();
+  ctx.globalAlpha = 0.18;
+  ctx.strokeStyle = "rgba(255, 236, 210, 0.55)";
+  ctx.lineWidth = 0.6;
+  for (let i = 0; i < 3; i++) {
+    const yy = y + 9 + i * 2;
+    ctx.beginPath();
+    ctx.moveTo(x + 4, yy);
+    ctx.bezierCurveTo(x + 14, yy - 0.4, x + 28, yy + 0.6, x + 44, yy);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 0.12;
+  ctx.strokeStyle = "rgba(44, 24, 8, 0.50)";
+  ctx.beginPath();
+  ctx.moveTo(x + 5, y + 12.5);
+  ctx.lineTo(x + 43, y + 12.5);
+  ctx.stroke();
+  ctx.restore();
 
   // bevel highlight/shadow
   ctx.globalAlpha = 0.55;
@@ -1987,6 +2123,13 @@ function drawDesk(ctx: CanvasRenderingContext2D, x: number, y: number) {
   scr.addColorStop(1, "#EC4899");
   ctx.fillStyle = scr;
   ctx.fillRect(x + 19, y + 2, 12, 7);
+  // reflection dot
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.beginPath();
+  ctx.arc(x + 22.5, y + 4.0, 0.9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
   ctx.shadowBlur = 0;
 
   // keyboard hint
@@ -2050,65 +2193,118 @@ function drawChair(ctx: CanvasRenderingContext2D, x: number, y: number) {
 }
 
 function drawBookshelf(ctx: CanvasRenderingContext2D, x: number, y: number, seed: number) {
-  // 32x32 — wooden frame + 3 shelves + colorful books
+  // 32x32 — wooden frame + 4 shelves + colorful books (varying widths, some tilted) + a few decor gaps.
   ctx.save();
-  const frame = ctx.createLinearGradient(x, y, x, y + 32);
-  frame.addColorStop(0, "#7B4A22");
-  frame.addColorStop(1, "#4E2B12");
+
+  // shadow under bookshelf
+  ctx.save();
+  ctx.globalAlpha = 0.30;
+  const sh = ctx.createRadialGradient(x + 16, y + 31, 4, x + 16, y + 31, 18);
+  sh.addColorStop(0, "rgba(2,6,23,0.55)");
+  sh.addColorStop(1, "rgba(2,6,23,0.0)");
+  ctx.fillStyle = sh;
+  ctx.beginPath();
+  ctx.ellipse(x + 16, y + 31, 14, 4.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // outer frame (3D depth)
+  const frame = ctx.createLinearGradient(x, y, x + 32, y + 32);
+  frame.addColorStop(0, "#8A5528");
+  frame.addColorStop(0.55, "#6A3C1B");
+  frame.addColorStop(1, "#3F200D");
   ctx.fillStyle = frame;
   ctx.fillRect(x + 1, y + 1, 30, 30);
 
-  // inner
-  ctx.fillStyle = "rgba(15,23,42,0.18)";
+  // inner cavity
+  const inner = ctx.createLinearGradient(x, y + 4, x, y + 28);
+  inner.addColorStop(0, "rgba(15,23,42,0.20)");
+  inner.addColorStop(1, "rgba(2,6,23,0.32)");
+  ctx.fillStyle = inner;
   ctx.fillRect(x + 4, y + 4, 24, 24);
 
-  // shelves
-  ctx.globalAlpha = 0.9;
-  ctx.fillStyle = "rgba(123,74,34,0.9)";
-  ctx.fillRect(x + 4, y + 11, 24, 2);
-  ctx.fillRect(x + 4, y + 19, 24, 2);
-  ctx.fillRect(x + 4, y + 27, 24, 2);
+  // shelves (4 rows => 4-6 feel in small sprite)
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = "rgba(123,74,34,0.92)";
+  for (const sy of [10, 16, 22, 28]) {
+    ctx.fillRect(x + 4, y + sy, 24, 2);
+    // tiny shelf highlight
+    ctx.globalAlpha = 0.20;
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillRect(x + 4, y + sy, 24, 1);
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "rgba(123,74,34,0.92)";
+  }
 
   // books
-  const colors = ["#ef4444", "#3b82f6", "#22c55e", "#eab308", "#a855f7", "#f97316", "#14b8a6"];
-  const drawRow = (yy: number, rowSeed: number) => {
+  const colors = ["#ef4444", "#3b82f6", "#22c55e", "#eab308", "#a855f7", "#f97316", "#14b8a6", "#f43f5e"];
+  const drawRow = (shelfY: number, rowSeed: number) => {
     let xx = x + 5;
     while (xx < x + 27) {
-      const n = hatchNoise(Math.floor(xx) + rowSeed * 17, Math.floor(yy) * 3);
-      const w = 2 + Math.floor(n * 4); // 2..5
-      const h = 6 + Math.floor(hatchNoise(rowSeed * 9, Math.floor(xx) * 2) * 4); // 6..9
-      const tilt = hatchNoise(rowSeed * 11, Math.floor(xx) * 4) > 0.88;
+      const n = hatchNoise(Math.floor(xx) + rowSeed * 17, Math.floor(shelfY) * 3);
+      const w = 2 + Math.floor(n * 5); // 2..6
+
+      // occasional empty gap for decor/air
+      const gap = hatchNoise(rowSeed * 31, Math.floor(xx) * 5) > 0.92;
+      if (gap) {
+        xx += 3;
+        // tiny decor item sometimes
+        if (hatchNoise(rowSeed * 29, Math.floor(xx) * 7) > 0.70) {
+          ctx.save();
+          ctx.globalAlpha = 0.9;
+          const dx = xx;
+          const dy = shelfY - 6;
+          // vase/plant-ish
+          ctx.fillStyle = "rgba(226,232,240,0.55)";
+          ctx.beginPath();
+          ctx.roundRect(dx, dy, 3, 5, 1.2);
+          ctx.fill();
+          ctx.globalAlpha = 0.35;
+          ctx.fillStyle = "rgba(34,197,94,0.55)";
+          ctx.fillRect(dx + 1, dy - 2, 1, 2);
+          ctx.restore();
+        }
+        continue;
+      }
+
+      const h = 6 + Math.floor(hatchNoise(rowSeed * 9, Math.floor(xx) * 2) * 5); // 6..10
+      const tilt = hatchNoise(rowSeed * 11, Math.floor(xx) * 4) > 0.86;
       const c = colors[Math.floor(hatchNoise(rowSeed * 7, Math.floor(xx)) * colors.length)]!;
 
       ctx.save();
       ctx.fillStyle = c;
       if (tilt) {
-        ctx.translate(xx + w / 2, yy + 6);
-        ctx.rotate(-0.12);
+        ctx.translate(xx + w / 2, shelfY);
+        ctx.rotate(-0.14);
         ctx.fillRect(-w / 2, -h + 1, w, h);
+        // spine highlight
+        ctx.globalAlpha = 0.28;
+        ctx.fillStyle = "rgba(255,255,255,0.75)";
+        ctx.fillRect(-w / 2 + 0.6, -h + 2, 1, h - 2);
       } else {
-        ctx.fillRect(xx, yy - h + 7, w, h);
+        ctx.fillRect(xx, shelfY - h + 1, w, h);
+        // spine highlight
+        ctx.globalAlpha = 0.28;
+        ctx.fillStyle = "rgba(255,255,255,0.75)";
+        ctx.fillRect(xx + 0.6, shelfY - h + 2, 1, h - 2);
       }
-      // spine highlight
-      ctx.globalAlpha = 0.28;
-      ctx.fillStyle = "rgba(255,255,255,0.7)";
-      if (tilt) ctx.fillRect(-w / 2 + 0.5, -h + 2, 1, h - 2);
-      else ctx.fillRect(xx + 0.5, yy - h + 8, 1, h - 2);
       ctx.restore();
 
       xx += w + 1;
     }
   };
-  drawRow(y + 12, seed + 1);
-  drawRow(y + 20, seed + 2);
-  drawRow(y + 28, seed + 3);
 
-  // frame outline + highlights
-  ctx.globalAlpha = 0.65;
-  ctx.strokeStyle = "rgba(2,6,23,0.55)";
+  drawRow(y + 12, seed + 1);
+  drawRow(y + 18, seed + 2);
+  drawRow(y + 24, seed + 3);
+  drawRow(y + 30, seed + 4);
+
+  // frame outline + highlights (3D)
+  ctx.globalAlpha = 0.70;
+  ctx.strokeStyle = "rgba(2,6,23,0.60)";
   ctx.strokeRect(x + 1.5, y + 1.5, 29, 29);
-  ctx.globalAlpha = 0.25;
-  ctx.strokeStyle = "rgba(253,230,138,0.35)";
+  ctx.globalAlpha = 0.28;
+  ctx.strokeStyle = "rgba(253,230,138,0.30)";
   ctx.beginPath();
   ctx.moveTo(x + 2.5, y + 2.5);
   ctx.lineTo(x + 29.5, y + 2.5);
@@ -2122,12 +2318,36 @@ function drawBookshelf(ctx: CanvasRenderingContext2D, x: number, y: number, seed
 function drawVendingMachine(ctx: CanvasRenderingContext2D, x: number, y: number) {
   // 32x48 — metallic body, glass, colorful rows
   ctx.save();
+
+  // shadow under
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  const sh = ctx.createRadialGradient(x + 16, y + 46, 4, x + 16, y + 46, 18);
+  sh.addColorStop(0, "rgba(2,6,23,0.55)");
+  sh.addColorStop(1, "rgba(2,6,23,0.0)");
+  ctx.fillStyle = sh;
+  ctx.beginPath();
+  ctx.ellipse(x + 16, y + 46, 14, 4.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
   const body = ctx.createLinearGradient(x, y, x + 32, y + 48);
   body.addColorStop(0, "#6B7280");
   body.addColorStop(0.5, "#4B5563");
   body.addColorStop(1, "#374151");
   ctx.fillStyle = body;
   ctx.fillRect(x + 2, y + 2, 28, 44);
+
+  // metallic sheen bands
+  ctx.save();
+  const sheen = ctx.createLinearGradient(x + 2, y, x + 30, y);
+  sheen.addColorStop(0, "rgba(255,255,255,0.05)");
+  sheen.addColorStop(0.35, "rgba(255,255,255,0.18)");
+  sheen.addColorStop(0.55, "rgba(255,255,255,0.06)");
+  sheen.addColorStop(1, "rgba(0,0,0,0.10)");
+  ctx.fillStyle = sheen;
+  ctx.fillRect(x + 2, y + 2, 28, 44);
+  ctx.restore();
 
   // brand panel
   ctx.fillStyle = "rgba(15,23,42,0.65)";
@@ -2203,6 +2423,19 @@ function drawVendingMachine(ctx: CanvasRenderingContext2D, x: number, y: number)
 function drawCouch(ctx: CanvasRenderingContext2D, x: number, y: number) {
   // 48x32 — cozy maroon/brown with seams
   ctx.save();
+
+  // shadow under couch
+  ctx.save();
+  ctx.globalAlpha = 0.32;
+  const sh = ctx.createRadialGradient(x + 24, y + 30, 6, x + 24, y + 30, 26);
+  sh.addColorStop(0, "rgba(2,6,23,0.55)");
+  sh.addColorStop(1, "rgba(2,6,23,0.0)");
+  ctx.fillStyle = sh;
+  ctx.beginPath();
+  ctx.ellipse(x + 24, y + 30, 20, 5.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
   const base = ctx.createLinearGradient(x, y + 10, x + 48, y + 32);
   base.addColorStop(0, "#5B1B22");
   base.addColorStop(0.6, "#3F1218");
@@ -2218,18 +2451,38 @@ function drawCouch(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.roundRect(x + 4, y + 6, 40, 10, 6);
   ctx.fill();
 
-  // seat cushions (2) + seam
-  ctx.fillStyle = "rgba(70, 18, 25, 0.9)";
+  // seat cushions (2) + seams
+  ctx.fillStyle = "rgba(70, 18, 25, 0.92)";
   ctx.beginPath();
   ctx.roundRect(x + 6, y + 16, 18, 10, 5);
   ctx.roundRect(x + 24, y + 16, 18, 10, 5);
   ctx.fill();
+
+  // cushion separation seam (middle)
   ctx.globalAlpha = 0.35;
   ctx.strokeStyle = "rgba(226,232,240,0.18)";
   ctx.beginPath();
   ctx.moveTo(x + 24.5, y + 16.5);
   ctx.lineTo(x + 24.5, y + 26.5);
   ctx.stroke();
+
+  // horizontal cushion stitch lines
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = "rgba(2,6,23,0.35)";
+  for (const cx of [x + 6, x + 24]) {
+    ctx.beginPath();
+    ctx.moveTo(cx + 2.5, y + 20.5);
+    ctx.lineTo(cx + 15.5, y + 20.5);
+    ctx.stroke();
+    ctx.globalAlpha = 0.14;
+    ctx.strokeStyle = "rgba(226,232,240,0.18)";
+    ctx.beginPath();
+    ctx.moveTo(cx + 2.5, y + 19.5);
+    ctx.lineTo(cx + 15.5, y + 19.5);
+    ctx.stroke();
+    ctx.globalAlpha = 0.22;
+    ctx.strokeStyle = "rgba(2,6,23,0.35)";
+  }
 
   // armrests
   ctx.globalAlpha = 1;
@@ -2327,37 +2580,80 @@ function drawFilingCabinet(ctx: CanvasRenderingContext2D, x: number, y: number) 
 }
 
 function drawWaterCooler(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  // 16x32 — bottle with visible water
+  // 16x32 — transparent blue bottle + silver base unit
   ctx.save();
-  // base
-  ctx.fillStyle = "#CBD5E1";
+
+  // shadow under
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  const sh = ctx.createRadialGradient(x + 8, y + 30, 2, x + 8, y + 30, 12);
+  sh.addColorStop(0, "rgba(2,6,23,0.50)");
+  sh.addColorStop(1, "rgba(2,6,23,0.0)");
+  ctx.fillStyle = sh;
+  ctx.beginPath();
+  ctx.ellipse(x + 8, y + 30, 7.2, 2.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // base (metallic)
+  const baseG = ctx.createLinearGradient(x + 3, y + 14, x + 13, y + 30);
+  baseG.addColorStop(0, "#E2E8F0");
+  baseG.addColorStop(0.5, "#B7C0CD");
+  baseG.addColorStop(1, "#8892A0");
+  ctx.fillStyle = baseG;
   ctx.beginPath();
   ctx.roundRect(x + 3, y + 14, 10, 16, 3);
   ctx.fill();
-  ctx.fillStyle = "rgba(15,23,42,0.35)";
+
+  // dispenser slot
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = "rgba(15,23,42,0.45)";
   ctx.fillRect(x + 6, y + 18, 4, 2);
 
-  // bottle
+  // base highlights
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = "rgba(255,255,255,0.8)";
+  ctx.fillRect(x + 4, y + 16, 1, 12);
+  ctx.globalAlpha = 0.35;
+  ctx.strokeStyle = "rgba(2,6,23,0.45)";
+  ctx.strokeRect(x + 3.5, y + 14.5, 9, 15);
+  ctx.globalAlpha = 1;
+
+  // bottle (transparent/blue gradient with outline)
   ctx.save();
-  ctx.globalAlpha = 0.8;
-  ctx.fillStyle = "rgba(56, 189, 248, 0.35)";
+  const bottleG = ctx.createLinearGradient(x + 4, y + 3, x + 12, y + 15);
+  bottleG.addColorStop(0, "rgba(186, 230, 253, 0.55)");
+  bottleG.addColorStop(0.55, "rgba(56, 189, 248, 0.28)");
+  bottleG.addColorStop(1, "rgba(37, 99, 235, 0.30)");
+  ctx.fillStyle = bottleG;
   ctx.beginPath();
   ctx.roundRect(x + 4, y + 3, 8, 12, 4);
   ctx.fill();
-  // water level
+
+  // inner water level (darker)
   ctx.globalAlpha = 0.55;
-  ctx.fillStyle = "rgba(59, 130, 246, 0.35)";
+  const waterG = ctx.createLinearGradient(x, y + 8, x, y + 15);
+  waterG.addColorStop(0, "rgba(59,130,246,0.10)");
+  waterG.addColorStop(1, "rgba(59,130,246,0.35)");
+  ctx.fillStyle = waterG;
   ctx.fillRect(x + 5, y + 9, 6, 5);
+
+  // bottle outline + rim
+  ctx.globalAlpha = 0.40;
+  ctx.strokeStyle = "rgba(15,23,42,0.35)";
+  ctx.strokeRect(x + 4.5, y + 3.5, 7, 11);
+  ctx.globalAlpha = 0.28;
+  ctx.strokeStyle = "rgba(226,232,240,0.35)";
+  ctx.beginPath();
+  ctx.arc(x + 8, y + 5, 3.2, 0, Math.PI * 2);
+  ctx.stroke();
+
   // shine
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle = "rgba(255,255,255,0.7)";
+  ctx.globalAlpha = 0.30;
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
   ctx.fillRect(x + 5, y + 5, 1, 9);
   ctx.restore();
 
-  // outline/shadow
-  ctx.globalAlpha = 0.45;
-  ctx.strokeStyle = "rgba(15,23,42,0.35)";
-  ctx.strokeRect(x + 3.5, y + 14.5, 9, 15);
   ctx.restore();
 }
 
@@ -3795,18 +4091,18 @@ export default function OfficePage() {
               ref={audioRef}
               loop
               muted={muted}
-              preload="none"
+              preload="auto"
               src="https://cdn.pixabay.com/audio/2024/11/28/audio_3a6a32ffc4.mp3"
             />
             <button
               onClick={() => {
                 const a = audioRef.current;
                 if (!a) return;
-                a.volume = 1.0;
                 const next = !muted;
+                a.volume = 1.0;
                 a.muted = next;
                 if (!next) {
-                  // user-initiated play to satisfy autoplay policies
+                  // ensure playing when unmuted
                   a.play().catch(() => {});
                 }
                 setMuted(next);
