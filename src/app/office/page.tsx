@@ -1384,8 +1384,8 @@ function buildProps(): Prop[] {
   p.push({ kind: "plantDeco", tx: 3, ty: 11 });
   p.push({ kind: "plantDeco", tx: 2, ty: 12 });
 
-  // entrance lobby (top-left corner wall) — visual only, clear of all furniture
-  p.push({ kind: "plaqueSign", tx: 1, ty: 1, text: "MISSION CONTROL" });
+  // entrance lobby (top-right corner wall) — visual only, clear of all furniture
+  p.push({ kind: "plaqueSign", tx: 26, ty: 1, text: "MISSION CONTROL" });
   p.push({ kind: "plantDeco", tx: 6, ty: 18 });
   p.push({ kind: "plantDeco", tx: 8, ty: 18 });
 
