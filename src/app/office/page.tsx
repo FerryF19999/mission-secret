@@ -642,8 +642,8 @@ function buildProps(): Prop[] {
   p.push({ kind: "plant", tx: 17, ty: 7 });
 
   // lounge (bottom-right) — TV + PlayStation + couch
-  p.push({ kind: "tv", tx: 22, ty: 11 });         // TV on wall
-  p.push({ kind: "playstation", tx: 23, ty: 12 }); // PS under TV
+  p.push({ kind: "tv", tx: 24, ty: 12 });          // TV on wall (away from door)
+  p.push({ kind: "playstation", tx: 25, ty: 13 }); // PS under TV
   p.push({ kind: "couch", tx: 20, ty: 15 });       // couch facing TV
   p.push({ kind: "coffeeTable", tx: 22, ty: 15 }); // table between couch and TV
   p.push({ kind: "bookshelf", tx: 26, ty: 12 });
@@ -1358,52 +1358,54 @@ export default function OfficePage() {
               rt.goingToSeat = true;
               rt.anim = rt.path.length ? "walk" : "idle";
               rt.nextDecisionMs = ms + randBetween(5000, 10000);
-            } else if (roll < 0.55) {
-              // Go to lounge — watch TV / play PlayStation
-              const loungeDests = [
-                { tx: 21, ty: 16, act: "📺" },
-                { tx: 20, ty: 16, act: "📺" },
-                { tx: 24, ty: 14, act: "🎮" },
-                { tx: 19, ty: 17, act: "🎮" },
-              ];
-              const pick = loungeDests[Math.floor(Math.random() * loungeDests.length)];
-              const dest = tileCenter(pick.tx, pick.ty);
-              rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
-              rt.goingToSeat = false;
-              rt.anim = rt.path.length ? "walk" : "idle";
-              rt.activityBubble = pick.act;
-              rt.activityUntilMs = ms + randBetween(8000, 14000);
-              rt.nextDecisionMs = ms + randBetween(8000, 14000);
-            } else if (roll < 0.70) {
-              // Go to kitchen — get coffee/snack
-              const kitchenDests = [
-                { tx: 20, ty: 4, act: "🍫" },  // vending snack
-                { tx: 24, ty: 4, act: "☕" },  // make coffee
-                { tx: 27, ty: 4, act: "💧" },  // water cooler
-                { tx: 21, ty: 7, act: "☕" },  // coffee table
-              ];
-              const pick = kitchenDests[Math.floor(Math.random() * kitchenDests.length)];
-              const dest = tileCenter(pick.tx, pick.ty);
-              rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
-              rt.goingToSeat = false;
-              rt.anim = rt.path.length ? "walk" : "idle";
-              rt.activityBubble = pick.act;
-              rt.activityUntilMs = ms + randBetween(5000, 9000);
-              rt.nextDecisionMs = ms + randBetween(5000, 9000);
             } else {
-              // Wander around office randomly
-              const officeDests = [
-                { tx: 6, ty: 14 },  // between desks
-                { tx: 11, ty: 15 }, // near bookshelf
-                { tx: 5, ty: 18 },  // hallway
-                { tx: 10, ty: 11 }, // upper office
+              // Wander to interesting destinations
+              const allDests: Array<{ tx: number; ty: number; act?: string; stay: number }> = [
+                // lounge
+                { tx: 21, ty: 16, act: "📺", stay: 10000 },
+                { tx: 20, ty: 16, act: "📺", stay: 10000 },
+                { tx: 19, ty: 17, act: "🎮", stay: 10000 },
+                // kitchen
+                { tx: 20, ty: 5, act: "🍫", stay: 7000 },
+                { tx: 24, ty: 5, act: "☕", stay: 7000 },
+                { tx: 27, ty: 5, act: "💧", stay: 5000 },
+                // office wander (safe spots away from walls)
+                { tx: 6, ty: 14, stay: 4000 },
+                { tx: 5, ty: 18, stay: 4000 },
+                { tx: 10, ty: 16, stay: 4000 },
+                { tx: 6, ty: 11, stay: 4000 },
               ];
-              const pick = officeDests[Math.floor(Math.random() * officeDests.length)];
-              const dest = tileCenter(pick.tx, pick.ty);
-              rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
-              rt.goingToSeat = false;
-              rt.anim = rt.path.length ? "walk" : "idle";
-              rt.nextDecisionMs = ms + randBetween(3000, 6000);
+
+              // Shuffle and try each until A* succeeds
+              const shuffled = allDests.sort(() => Math.random() - 0.5);
+              let found = false;
+              for (const dest of shuffled) {
+                // Skip if destination tile is blocked
+                if (dest.tx >= 0 && dest.tx < COLS && dest.ty >= 0 && dest.ty < ROWS && blocked[dest.ty][dest.tx]) continue;
+                const target = tileCenter(dest.tx, dest.ty);
+                const path = aStar(blocked, { x: rt.x, y: rt.y }, target);
+                if (path.length > 0) {
+                  rt.path = path;
+                  rt.goingToSeat = false;
+                  rt.anim = "walk";
+                  if (dest.act) {
+                    rt.activityBubble = dest.act;
+                    rt.activityUntilMs = ms + dest.stay + randBetween(2000, 5000);
+                  }
+                  rt.nextDecisionMs = ms + dest.stay + randBetween(2000, 5000);
+                  found = true;
+                  break;
+                }
+              }
+              // If no valid destination found, go back to desk
+              if (!found) {
+                const seat = SEATS[a.key];
+                const dest = tileCenter(seat.tx, seat.ty);
+                rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
+                rt.goingToSeat = true;
+                rt.anim = rt.path.length ? "walk" : "idle";
+                rt.nextDecisionMs = ms + randBetween(5000, 10000);
+              }
             }
           }
 
@@ -1468,7 +1470,7 @@ export default function OfficePage() {
           rt.lastMoveMs = ms;
           rt.lastPos = { x: rt.x, y: rt.y };
         }
-        if (ms - rt.lastMoveMs > 4000 && rt.anim !== "work" && rt.path.length === 0) {
+        if (ms - rt.lastMoveMs > 2000 && rt.anim !== "work" && rt.path.length === 0) {
           const seat = SEATS[a.key];
           const sp = tileCenter(seat.tx, seat.ty);
           rt.x = sp.x;
