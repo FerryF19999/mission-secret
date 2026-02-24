@@ -933,7 +933,7 @@ function buildProps(): Prop[] {
   // Lounge - living room layout: TV on wall, couch facing it, coffee table between
   p.push({ kind: "tv", tx: 22, ty: 12 });           // TV centered on wall
   p.push({ kind: "playstation", tx: 22, ty: 13 });  // PS console under TV
-  p.push({ kind: "neonSign", tx: 20, ty: 11, text: "GAME ON" });
+  p.push({ kind: "neonSign", tx: 24, ty: 11, text: "GAME ON" });
   p.push({ kind: "rug", tx: 20, ty: 14 });          // warm rug under seating
   p.push({ kind: "coffeeTable", tx: 22, ty: 15 });  // coffee table in front of couch
   p.push({ kind: "couch", tx: 21, ty: 17 });        // couch facing TV (further back)
@@ -1180,16 +1180,15 @@ function isPointInCharacter(px: number, py: number, rt: CharacterRuntime) {
 function drawKitchenClock(ctx: CanvasRenderingContext2D) {
   const { hh, mm } = wibNowParts();
   const text = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")} WIB`;
-  // keep a bit more padding from the right wall
-  const x = 23 * TILE + 8;
-  const y = 2 * TILE + 8;
+  const x = 22 * TILE;
+  const y = 1 * TILE + 10;
   ctx.save();
   ctx.globalAlpha = 0.92;
-  ctx.fillStyle = "rgba(0,0,0,0.55)";
-  ctx.fillRect(x - 18, y - 8, 36, 14);
-  ctx.strokeStyle = "rgba(255,255,255,0.22)";
-  ctx.strokeRect(x - 18.5, y - 8.5, 37, 15);
-  ctx.font = "7px ui-monospace, SFMono-Regular, Menlo, Monaco";
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(x - 24, y - 7, 48, 14);
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.strokeRect(x - 24.5, y - 7.5, 49, 15);
+  ctx.font = "bold 7px ui-monospace, SFMono-Regular, Menlo, Monaco";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "rgba(226,232,240,0.95)";
@@ -1770,10 +1769,10 @@ function drawWorld(
     ctx.restore();
   };
   // Place labels in open space so they don't overlap props/agent labels
-  plaque(1, 11, "MAIN OFFICE", "rgba(56,189,248,0.95)");
-  plaque(22, 5, "KITCHEN", "rgba(34,197,94,0.95)");
-  plaque(22, 11, "LOUNGE", "rgba(251,191,36,0.95)");
-  plaque(7, 2, "BOSS ROOM", "rgba(244,114,182,0.95)");
+  plaque(5, 10, "MAIN OFFICE", "rgba(56,189,248,0.95)");
+  plaque(22, 3, "KITCHEN", "rgba(34,197,94,0.95)");
+  plaque(18, 11, "LOUNGE", "rgba(251,191,36,0.95)");
+  plaque(5, 2, "BOSS ROOM", "rgba(244,114,182,0.95)");
 }
 
 function drawCharacter(
