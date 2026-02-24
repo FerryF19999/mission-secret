@@ -1744,6 +1744,717 @@ function buildSprites(): Sprites {
   };
 }
 
+function drawFloorWoodTile(ctx: CanvasRenderingContext2D, x: number, y: number, tx: number, ty: number) {
+  // warm planks + grain (Stardew-ish), light from top-left
+  const g = ctx.createLinearGradient(x, y, x + 16, y + 16);
+  g.addColorStop(0, "#D2A24B");
+  g.addColorStop(0.45, "#B68434");
+  g.addColorStop(1, "#8C5B18");
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, 16, 16);
+
+  // plank seams (vary with tile coord so it doesn't look tiled)
+  const seamA = ((tx * 3 + ty) % 3) + 4; // 4..6
+  const seamB = seamA + 5 + ((tx + ty) % 2); // ~10..12
+  ctx.strokeStyle = "rgba(53, 29, 8, 0.45)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + seamA + 0.5, y + 0.5);
+  ctx.lineTo(x + seamA + 0.5, y + 15.5);
+  ctx.moveTo(x + seamB + 0.5, y + 0.5);
+  ctx.lineTo(x + seamB + 0.5, y + 15.5);
+  ctx.stroke();
+
+  // soft grain
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = "rgba(255, 241, 205, 0.35)";
+  ctx.lineWidth = 0.6;
+  for (let i = 0; i < 4; i++) {
+    const yy = y + 3 + i * 3 + (((tx + ty + i) % 3) - 1) * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(x + 1, yy);
+    ctx.bezierCurveTo(x + 5, yy + 0.6, x + 11, yy - 0.4, x + 15, yy + 0.2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 0.16;
+  ctx.strokeStyle = "rgba(53, 29, 8, 0.35)";
+  for (let i = 0; i < 3; i++) {
+    const yy = y + 4 + i * 4;
+    ctx.beginPath();
+    ctx.moveTo(x + 1, yy);
+    ctx.lineTo(x + 15, yy);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // bevel highlight + wear
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.fillRect(x, y, 16, 1);
+  ctx.fillRect(x, y, 1, 16);
+  ctx.globalAlpha = 0.18;
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillRect(x, y + 15, 16, 1);
+  ctx.fillRect(x + 15, y, 1, 16);
+  ctx.restore();
+}
+
+function drawFloorKitchenTile(ctx: CanvasRenderingContext2D, x: number, y: number, tx: number, ty: number) {
+  // light tile with grout grid + mild sheen
+  const g = ctx.createLinearGradient(x, y, x, y + 16);
+  g.addColorStop(0, "#F1E9DA");
+  g.addColorStop(1, "#E2D6C2");
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, 16, 16);
+
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = "rgba(120, 112, 100, 0.35)";
+  ctx.lineWidth = 1;
+  // 4x4 sub-tiles
+  for (let i = 4; i <= 12; i += 4) {
+    ctx.beginPath();
+    ctx.moveTo(x + i + 0.5, y + 0.5);
+    ctx.lineTo(x + i + 0.5, y + 15.5);
+    ctx.moveTo(x + 0.5, y + i + 0.5);
+    ctx.lineTo(x + 15.5, y + i + 0.5);
+    ctx.stroke();
+  }
+  // sheen (top-left)
+  ctx.globalAlpha = 0.12;
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.fillRect(x + 2, y + 2, 6, 2);
+  ctx.fillRect(x + 2, y + 4, 3, 1);
+  ctx.restore();
+
+  // tiny speckle
+  if (((tx * 13 + ty * 7) % 23) === 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.10;
+    ctx.fillStyle = "rgba(15,23,42,0.8)";
+    ctx.fillRect(x + 11, y + 9, 1, 1);
+    ctx.fillRect(x + 6, y + 12, 1, 1);
+    ctx.restore();
+  }
+}
+
+function drawFloorCarpetTile(ctx: CanvasRenderingContext2D, x: number, y: number, tx: number, ty: number) {
+  const g = ctx.createLinearGradient(x, y, x + 16, y + 16);
+  g.addColorStop(0, "#6AA4B7");
+  g.addColorStop(1, "#3F6F86");
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, 16, 16);
+
+  // weave
+  ctx.save();
+  ctx.globalAlpha = 0.14;
+  ctx.fillStyle = "rgba(15,23,42,0.8)";
+  for (let yy = 0; yy < 16; yy += 2) {
+    for (let xx = (yy + tx + ty) % 4; xx < 16; xx += 4) {
+      ctx.fillRect(x + xx, y + yy, 1, 1);
+    }
+  }
+  ctx.restore();
+}
+
+function drawWallTile(ctx: CanvasRenderingContext2D, x: number, y: number, tx: number, ty: number) {
+  const g = ctx.createLinearGradient(x, y, x + 16, y + 16);
+  g.addColorStop(0, "#3A405A");
+  g.addColorStop(0.5, "#2C3146");
+  g.addColorStop(1, "#1A1D2C");
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, 16, 16);
+
+  // subtle panel/brick lines
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.strokeStyle = "rgba(11, 15, 30, 0.55)";
+  ctx.lineWidth = 1;
+  const vx = (tx % 2 === 0) ? 6 : 9;
+  ctx.beginPath();
+  ctx.moveTo(x + vx + 0.5, y + 1.5);
+  ctx.lineTo(x + vx + 0.5, y + 14.5);
+  ctx.moveTo(x + 0.5, y + 5.5);
+  ctx.lineTo(x + 15.5, y + 5.5);
+  ctx.moveTo(x + 0.5, y + 11.5);
+  ctx.lineTo(x + 15.5, y + 11.5);
+  ctx.stroke();
+
+  // top-left bevel highlight
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = "rgba(226,232,240,0.35)";
+  ctx.beginPath();
+  ctx.moveTo(x + 0.5, y + 0.5);
+  ctx.lineTo(x + 15.5, y + 0.5);
+  ctx.moveTo(x + 0.5, y + 0.5);
+  ctx.lineTo(x + 0.5, y + 15.5);
+  ctx.stroke();
+
+  // bottom-right shadow
+  ctx.globalAlpha = 0.20;
+  ctx.strokeStyle = "rgba(2,6,23,0.65)";
+  ctx.beginPath();
+  ctx.moveTo(x + 0.5, y + 15.5);
+  ctx.lineTo(x + 15.5, y + 15.5);
+  ctx.moveTo(x + 15.5, y + 0.5);
+  ctx.lineTo(x + 15.5, y + 15.5);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDesk(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  // 48x32
+  ctx.save();
+
+  // desk body
+  const body = ctx.createLinearGradient(x, y + 8, x, y + 30);
+  body.addColorStop(0, "#6C4020");
+  body.addColorStop(0.5, "#583116");
+  body.addColorStop(1, "#3C210E");
+  ctx.fillStyle = body;
+  ctx.fillRect(x + 2, y + 10, 44, 18);
+
+  // top surface
+  const top = ctx.createLinearGradient(x, y + 6, x + 48, y + 14);
+  top.addColorStop(0, "#996133");
+  top.addColorStop(1, "#6E4222");
+  ctx.fillStyle = top;
+  ctx.fillRect(x + 2, y + 8, 44, 6);
+
+  // bevel highlight/shadow
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = "rgba(255,255,255,0.20)";
+  ctx.fillRect(x + 2, y + 8, 44, 1);
+  ctx.fillRect(x + 2, y + 8, 1, 20);
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillRect(x + 45, y + 9, 1, 19);
+  ctx.fillRect(x + 3, y + 27, 43, 1);
+  ctx.globalAlpha = 1;
+
+  // wood grain lines
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = "rgba(255, 224, 180, 0.35)";
+  ctx.lineWidth = 0.6;
+  for (let i = 0; i < 5; i++) {
+    const yy = y + 12 + i * 3;
+    ctx.beginPath();
+    ctx.moveTo(x + 5, yy);
+    ctx.bezierCurveTo(x + 14, yy - 0.6, x + 30, yy + 0.8, x + 44, yy - 0.2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // drawers (right)
+  ctx.save();
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = "rgba(40, 22, 10, 0.35)";
+  ctx.fillRect(x + 32, y + 14, 12, 12);
+  ctx.strokeStyle = "rgba(2,6,23,0.45)";
+  ctx.strokeRect(x + 32.5, y + 14.5, 11, 11);
+  ctx.globalAlpha = 0.55;
+  ctx.beginPath();
+  ctx.moveTo(x + 32.5, y + 20.5);
+  ctx.lineTo(x + 43.5, y + 20.5);
+  ctx.stroke();
+  // handles
+  ctx.globalAlpha = 0.8;
+  ctx.fillStyle = "rgba(226,232,240,0.75)";
+  ctx.fillRect(x + 36, y + 18, 4, 1);
+  ctx.fillRect(x + 36, y + 23, 4, 1);
+  ctx.restore();
+
+  // legs
+  ctx.fillStyle = "#2A170C";
+  ctx.fillRect(x + 5, y + 26, 4, 6);
+  ctx.fillRect(x + 39, y + 26, 4, 6);
+
+  // monitor (with purple/pink glow)
+  ctx.save();
+  ctx.fillStyle = "#1E2233";
+  ctx.fillRect(x + 18, y + 1, 14, 10);
+  ctx.fillStyle = "#0B1020";
+  ctx.fillRect(x + 23, y + 11, 4, 2);
+  ctx.fillRect(x + 21, y + 13, 8, 1);
+
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = "rgba(236, 72, 153, 0.55)";
+  const scr = ctx.createLinearGradient(x + 18, y + 2, x + 32, y + 10);
+  scr.addColorStop(0, "#7C3AED");
+  scr.addColorStop(1, "#EC4899");
+  ctx.fillStyle = scr;
+  ctx.fillRect(x + 19, y + 2, 12, 7);
+  ctx.shadowBlur = 0;
+
+  // keyboard hint
+  ctx.globalAlpha = 0.8;
+  ctx.fillStyle = "rgba(15,23,42,0.55)";
+  ctx.fillRect(x + 16, y + 15, 18, 4);
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = "rgba(226,232,240,0.5)";
+  for (let i = 0; i < 6; i++) ctx.fillRect(x + 17 + i * 3, y + 16, 2, 1);
+
+  // coffee mug
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = "rgba(226,232,240,0.9)";
+  ctx.beginPath();
+  ctx.roundRect(x + 8, y + 14, 5, 6, 1.5);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(15,23,42,0.25)";
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(226,232,240,0.8)";
+  ctx.beginPath();
+  ctx.arc(x + 13.5, y + 17, 2, -0.8, 0.8);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function drawChair(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  // 16x16 beige/tan with rounded back
+  ctx.save();
+  const base = ctx.createLinearGradient(x, y, x + 16, y + 16);
+  base.addColorStop(0, "#F1E2C8");
+  base.addColorStop(1, "#CDBB9D");
+  ctx.fillStyle = base;
+
+  // backrest
+  ctx.beginPath();
+  ctx.roundRect(x + 3, y + 2, 10, 8, 4);
+  ctx.fill();
+  // seat
+  ctx.fillStyle = "#D8C5A8";
+  ctx.beginPath();
+  ctx.roundRect(x + 2, y + 9, 12, 5, 3);
+  ctx.fill();
+
+  // seam + depth
+  ctx.globalAlpha = 0.35;
+  ctx.strokeStyle = "rgba(15,23,42,0.35)";
+  ctx.beginPath();
+  ctx.moveTo(x + 4.5, y + 11.5);
+  ctx.lineTo(x + 11.5, y + 11.5);
+  ctx.stroke();
+
+  // legs
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = "#3B2A1A";
+  ctx.fillRect(x + 4, y + 13, 2, 3);
+  ctx.fillRect(x + 10, y + 13, 2, 3);
+
+  ctx.restore();
+}
+
+function drawBookshelf(ctx: CanvasRenderingContext2D, x: number, y: number, seed: number) {
+  // 32x32 — wooden frame + 3 shelves + colorful books
+  ctx.save();
+  const frame = ctx.createLinearGradient(x, y, x, y + 32);
+  frame.addColorStop(0, "#7B4A22");
+  frame.addColorStop(1, "#4E2B12");
+  ctx.fillStyle = frame;
+  ctx.fillRect(x + 1, y + 1, 30, 30);
+
+  // inner
+  ctx.fillStyle = "rgba(15,23,42,0.18)";
+  ctx.fillRect(x + 4, y + 4, 24, 24);
+
+  // shelves
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = "rgba(123,74,34,0.9)";
+  ctx.fillRect(x + 4, y + 11, 24, 2);
+  ctx.fillRect(x + 4, y + 19, 24, 2);
+  ctx.fillRect(x + 4, y + 27, 24, 2);
+
+  // books
+  const colors = ["#ef4444", "#3b82f6", "#22c55e", "#eab308", "#a855f7", "#f97316", "#14b8a6"];
+  const drawRow = (yy: number, rowSeed: number) => {
+    let xx = x + 5;
+    while (xx < x + 27) {
+      const n = hatchNoise(Math.floor(xx) + rowSeed * 17, Math.floor(yy) * 3);
+      const w = 2 + Math.floor(n * 4); // 2..5
+      const h = 6 + Math.floor(hatchNoise(rowSeed * 9, Math.floor(xx) * 2) * 4); // 6..9
+      const tilt = hatchNoise(rowSeed * 11, Math.floor(xx) * 4) > 0.88;
+      const c = colors[Math.floor(hatchNoise(rowSeed * 7, Math.floor(xx)) * colors.length)]!;
+
+      ctx.save();
+      ctx.fillStyle = c;
+      if (tilt) {
+        ctx.translate(xx + w / 2, yy + 6);
+        ctx.rotate(-0.12);
+        ctx.fillRect(-w / 2, -h + 1, w, h);
+      } else {
+        ctx.fillRect(xx, yy - h + 7, w, h);
+      }
+      // spine highlight
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      if (tilt) ctx.fillRect(-w / 2 + 0.5, -h + 2, 1, h - 2);
+      else ctx.fillRect(xx + 0.5, yy - h + 8, 1, h - 2);
+      ctx.restore();
+
+      xx += w + 1;
+    }
+  };
+  drawRow(y + 12, seed + 1);
+  drawRow(y + 20, seed + 2);
+  drawRow(y + 28, seed + 3);
+
+  // frame outline + highlights
+  ctx.globalAlpha = 0.65;
+  ctx.strokeStyle = "rgba(2,6,23,0.55)";
+  ctx.strokeRect(x + 1.5, y + 1.5, 29, 29);
+  ctx.globalAlpha = 0.25;
+  ctx.strokeStyle = "rgba(253,230,138,0.35)";
+  ctx.beginPath();
+  ctx.moveTo(x + 2.5, y + 2.5);
+  ctx.lineTo(x + 29.5, y + 2.5);
+  ctx.moveTo(x + 2.5, y + 2.5);
+  ctx.lineTo(x + 2.5, y + 29.5);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawVendingMachine(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  // 32x48 — metallic body, glass, colorful rows
+  ctx.save();
+  const body = ctx.createLinearGradient(x, y, x + 32, y + 48);
+  body.addColorStop(0, "#6B7280");
+  body.addColorStop(0.5, "#4B5563");
+  body.addColorStop(1, "#374151");
+  ctx.fillStyle = body;
+  ctx.fillRect(x + 2, y + 2, 28, 44);
+
+  // brand panel
+  ctx.fillStyle = "rgba(15,23,42,0.65)";
+  ctx.fillRect(x + 4, y + 4, 24, 6);
+  ctx.fillStyle = "rgba(56,189,248,0.75)";
+  ctx.font = "6px ui-monospace, SFMono-Regular, Menlo, Monaco";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("SODA", x + 16, y + 7);
+
+  // glass window
+  ctx.fillStyle = "rgba(2,6,23,0.35)";
+  ctx.fillRect(x + 5, y + 12, 18, 26);
+  ctx.strokeStyle = "rgba(226,232,240,0.35)";
+  ctx.strokeRect(x + 5.5, y + 12.5, 17, 25);
+
+  // products
+  const rows = 4;
+  const cols = 3;
+  const colors = ["#ef4444", "#22c55e", "#3b82f6", "#eab308", "#a855f7", "#f97316", "#14b8a6"];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cx = x + 7 + c * 5;
+      const cy = y + 15 + r * 6;
+      const col = colors[(r * 3 + c) % colors.length]!;
+      ctx.fillStyle = col;
+      ctx.fillRect(cx, cy, 4, 3);
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = "rgba(255,255,255,0.8)";
+      ctx.fillRect(cx, cy, 1, 3);
+      ctx.globalAlpha = 1;
+    }
+    // shelf line
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = "rgba(226,232,240,0.25)";
+    ctx.beginPath();
+    ctx.moveTo(x + 6.5, y + 18 + r * 6 + 3.5);
+    ctx.lineTo(x + 22.5, y + 18 + r * 6 + 3.5);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // coin slot / keypad
+  ctx.fillStyle = "rgba(15,23,42,0.55)";
+  ctx.fillRect(x + 24, y + 14, 4, 10);
+  ctx.fillStyle = "rgba(226,232,240,0.75)";
+  ctx.fillRect(x + 25, y + 16, 2, 1);
+  ctx.globalAlpha = 0.65;
+  for (let i = 0; i < 6; i++) ctx.fillRect(x + 25, y + 18 + i, 2, 0.5);
+  ctx.globalAlpha = 1;
+
+  // glass shine
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = "rgba(255,255,255,0.8)";
+  ctx.fillRect(x + 6, y + 13, 2, 24);
+
+  // outline + highlight
+  ctx.globalAlpha = 0.7;
+  ctx.strokeStyle = "rgba(2,6,23,0.55)";
+  ctx.strokeRect(x + 2.5, y + 2.5, 27, 43);
+  ctx.globalAlpha = 0.25;
+  ctx.strokeStyle = "rgba(253,230,138,0.30)";
+  ctx.beginPath();
+  ctx.moveTo(x + 2.5, y + 2.5);
+  ctx.lineTo(x + 29.5, y + 2.5);
+  ctx.moveTo(x + 2.5, y + 2.5);
+  ctx.lineTo(x + 2.5, y + 45.5);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawCouch(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  // 48x32 — cozy maroon/brown with seams
+  ctx.save();
+  const base = ctx.createLinearGradient(x, y + 10, x + 48, y + 32);
+  base.addColorStop(0, "#5B1B22");
+  base.addColorStop(0.6, "#3F1218");
+  base.addColorStop(1, "#2A0A10");
+  ctx.fillStyle = base;
+  ctx.beginPath();
+  ctx.roundRect(x + 2, y + 12, 44, 18, 6);
+  ctx.fill();
+
+  // back cushion
+  ctx.fillStyle = "rgba(120, 32, 40, 0.85)";
+  ctx.beginPath();
+  ctx.roundRect(x + 4, y + 6, 40, 10, 6);
+  ctx.fill();
+
+  // seat cushions (2) + seam
+  ctx.fillStyle = "rgba(70, 18, 25, 0.9)";
+  ctx.beginPath();
+  ctx.roundRect(x + 6, y + 16, 18, 10, 5);
+  ctx.roundRect(x + 24, y + 16, 18, 10, 5);
+  ctx.fill();
+  ctx.globalAlpha = 0.35;
+  ctx.strokeStyle = "rgba(226,232,240,0.18)";
+  ctx.beginPath();
+  ctx.moveTo(x + 24.5, y + 16.5);
+  ctx.lineTo(x + 24.5, y + 26.5);
+  ctx.stroke();
+
+  // armrests
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(45, 10, 14, 0.9)";
+  ctx.beginPath();
+  ctx.roundRect(x + 1, y + 12, 7, 14, 6);
+  ctx.roundRect(x + 40, y + 12, 7, 14, 6);
+  ctx.fill();
+
+  // fabric texture speckles
+  ctx.save();
+  ctx.globalAlpha = 0.10;
+  ctx.fillStyle = "rgba(255,255,255,0.6)";
+  for (let i = 0; i < 22; i++) {
+    const xx = x + 4 + (i * 37) % 40;
+    const yy = y + 10 + (i * 19) % 18;
+    ctx.fillRect(xx, yy, 1, 1);
+  }
+  ctx.restore();
+
+  // edge highlight/shadow
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = "rgba(253,230,138,0.18)";
+  ctx.fillRect(x + 3, y + 12, 42, 1);
+  ctx.globalAlpha = 0.20;
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillRect(x + 3, y + 29, 42, 1);
+
+  ctx.restore();
+}
+
+function drawFridge(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  // 16x32 — metallic
+  ctx.save();
+  const g = ctx.createLinearGradient(x, y, x + 16, y + 32);
+  g.addColorStop(0, "#E5E7EB");
+  g.addColorStop(0.5, "#BFC7D1");
+  g.addColorStop(1, "#8B95A3");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.roundRect(x + 2, y + 2, 12, 28, 3);
+  ctx.fill();
+
+  // door split
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = "rgba(15,23,42,0.25)";
+  ctx.beginPath();
+  ctx.moveTo(x + 3.5, y + 14.5);
+  ctx.lineTo(x + 12.5, y + 14.5);
+  ctx.stroke();
+
+  // handle
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = "rgba(15,23,42,0.35)";
+  ctx.fillRect(x + 11, y + 6, 1, 10);
+  ctx.fillRect(x + 11, y + 18, 1, 8);
+
+  // highlight
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.fillRect(x + 3, y + 4, 1, 24);
+
+  ctx.restore();
+}
+
+function drawFilingCabinet(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  // 16x32 — gray cabinet next to desks
+  ctx.save();
+  const g = ctx.createLinearGradient(x, y, x + 16, y + 32);
+  g.addColorStop(0, "#AEB7C3");
+  g.addColorStop(1, "#6B7280");
+  ctx.fillStyle = g;
+  ctx.fillRect(x + 2, y + 6, 12, 24);
+
+  ctx.globalAlpha = 0.65;
+  ctx.strokeStyle = "rgba(15,23,42,0.45)";
+  ctx.strokeRect(x + 2.5, y + 6.5, 11, 23);
+  for (let i = 0; i < 3; i++) {
+    const yy = y + 8 + i * 7;
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    ctx.moveTo(x + 3.5, yy + 6.5);
+    ctx.lineTo(x + 12.5, yy + 6.5);
+    ctx.stroke();
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = "rgba(226,232,240,0.75)";
+    ctx.fillRect(x + 7, yy + 5, 2, 1);
+  }
+
+  // top-left highlight
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
+  ctx.fillRect(x + 2, y + 6, 1, 24);
+  ctx.restore();
+}
+
+function drawWaterCooler(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  // 16x32 — bottle with visible water
+  ctx.save();
+  // base
+  ctx.fillStyle = "#CBD5E1";
+  ctx.beginPath();
+  ctx.roundRect(x + 3, y + 14, 10, 16, 3);
+  ctx.fill();
+  ctx.fillStyle = "rgba(15,23,42,0.35)";
+  ctx.fillRect(x + 6, y + 18, 4, 2);
+
+  // bottle
+  ctx.save();
+  ctx.globalAlpha = 0.8;
+  ctx.fillStyle = "rgba(56, 189, 248, 0.35)";
+  ctx.beginPath();
+  ctx.roundRect(x + 4, y + 3, 8, 12, 4);
+  ctx.fill();
+  // water level
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = "rgba(59, 130, 246, 0.35)";
+  ctx.fillRect(x + 5, y + 9, 6, 5);
+  // shine
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = "rgba(255,255,255,0.7)";
+  ctx.fillRect(x + 5, y + 5, 1, 9);
+  ctx.restore();
+
+  // outline/shadow
+  ctx.globalAlpha = 0.45;
+  ctx.strokeStyle = "rgba(15,23,42,0.35)";
+  ctx.strokeRect(x + 3.5, y + 14.5, 9, 15);
+  ctx.restore();
+}
+
+function drawPainting(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  // 32x16 — landscape in wooden frame
+  ctx.save();
+  const frame = ctx.createLinearGradient(x, y, x, y + 16);
+  frame.addColorStop(0, "#7B4A22");
+  frame.addColorStop(1, "#4E2B12");
+  ctx.fillStyle = frame;
+  ctx.fillRect(x + 1, y + 1, 30, 14);
+
+  // matte
+  ctx.fillStyle = "rgba(226,232,240,0.12)";
+  ctx.fillRect(x + 3, y + 3, 26, 10);
+
+  // sky
+  const sky = ctx.createLinearGradient(x, y + 3, x, y + 13);
+  sky.addColorStop(0, "#60A5FA");
+  sky.addColorStop(1, "#1E3A8A");
+  ctx.fillStyle = sky;
+  ctx.fillRect(x + 4, y + 4, 24, 4);
+  // hills
+  ctx.fillStyle = "#14532D";
+  ctx.beginPath();
+  ctx.moveTo(x + 4, y + 13);
+  ctx.quadraticCurveTo(x + 12, y + 8, x + 20, y + 13);
+  ctx.quadraticCurveTo(x + 24, y + 10, x + 28, y + 13);
+  ctx.closePath();
+  ctx.fill();
+  // sun
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = "rgba(253,230,138,0.9)";
+  ctx.beginPath();
+  ctx.arc(x + 9, y + 6, 1.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // frame highlight
+  ctx.globalAlpha = 0.25;
+  ctx.strokeStyle = "rgba(253,230,138,0.35)";
+  ctx.strokeRect(x + 1.5, y + 1.5, 29, 13);
+  ctx.restore();
+}
+
+function drawWallClock(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  // 16x16 — analog
+  ctx.save();
+  const now = new Date();
+  const hh = now.getHours() % 12;
+  const mm = now.getMinutes();
+
+  // face
+  ctx.fillStyle = "rgba(226,232,240,0.85)";
+  ctx.beginPath();
+  ctx.arc(x + 8, y + 8, 6.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(15,23,42,0.55)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // ticks
+  ctx.globalAlpha = 0.65;
+  ctx.strokeStyle = "rgba(15,23,42,0.45)";
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
+    const r0 = 5.0;
+    const r1 = i % 3 === 0 ? 6.0 : 5.7;
+    ctx.beginPath();
+    ctx.moveTo(x + 8 + Math.cos(a) * r0, y + 8 + Math.sin(a) * r0);
+    ctx.lineTo(x + 8 + Math.cos(a) * r1, y + 8 + Math.sin(a) * r1);
+    ctx.stroke();
+  }
+
+  // hands
+  const aM = (mm / 60) * Math.PI * 2 - Math.PI / 2;
+  const aH = ((hh + mm / 60) / 12) * Math.PI * 2 - Math.PI / 2;
+  ctx.globalAlpha = 0.9;
+  ctx.strokeStyle = "rgba(15,23,42,0.75)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x + 8, y + 8);
+  ctx.lineTo(x + 8 + Math.cos(aH) * 3.2, y + 8 + Math.sin(aH) * 3.2);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + 8, y + 8);
+  ctx.lineTo(x + 8 + Math.cos(aM) * 4.7, y + 8 + Math.sin(aM) * 4.7);
+  ctx.stroke();
+
+  // center
+  ctx.fillStyle = "rgba(15,23,42,0.75)";
+  ctx.beginPath();
+  ctx.arc(x + 8, y + 8, 1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawWorld(
   ctx: CanvasRenderingContext2D,
   sprites: Sprites,
@@ -1752,12 +2463,15 @@ function drawWorld(
   live: LiveAgent[],
   ms: number
 ) {
-  // floors
+  // floors (canvas API — richer detail than 16x16 pixel sprites)
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const kind = floor[r][c];
-      const spr = kind === "wood" ? sprites.floorWood : kind === "beige" ? sprites.floorBeige : sprites.floorCarpet;
-      ctx.drawImage(spr.canvas, 0, 0, 16, 16, c * TILE, r * TILE, 16, 16);
+      const x = c * TILE;
+      const y = r * TILE;
+      if (kind === "wood") drawFloorWoodTile(ctx, x, y, c, r);
+      else if (kind === "beige") drawFloorKitchenTile(ctx, x, y, c, r);
+      else drawFloorCarpetTile(ctx, x, y, c, r);
     }
   }
 
@@ -1833,9 +2547,9 @@ function drawWorld(
   // entrance mat (bottom wall)
   drawMat(7, ROWS - 2, "WELCOME");
 
-  // walls
+  // walls (canvas API: charcoal/navy with panel lines + depth)
   const wall = (tx: number, ty: number) => {
-    ctx.drawImage(sprites.wall.canvas, 0, 0, 16, 16, tx * TILE, ty * TILE, 16, 16);
+    drawWallTile(ctx, tx * TILE, ty * TILE, tx, ty);
   };
   for (let x = 0; x < COLS; x++) {
     wall(x, 0);
@@ -2058,16 +2772,18 @@ function drawWorld(
 
     if (pr.kind === "desk") {
       // chair sits behind desk (except boss desk which has its own exec chair)
-      if (pr.owner !== "yuri") drawAt(sprites.chair, pr.tx + 1, pr.ty - 1);
-      drawAt(sprites.desk, pr.tx, pr.ty);
+      if (pr.owner !== "yuri") drawChair(ctx, (pr.tx + 1) * TILE, (pr.ty - 1) * TILE);
+      drawDesk(ctx, pr.tx * TILE, pr.ty * TILE);
     }
-    if (pr.kind === "filingCabinet") drawAt(sprites.filingCabinet, pr.tx, pr.ty);
-    if (pr.kind === "bookshelf") drawAt(sprites.bookshelf, pr.tx, pr.ty);
-    if (pr.kind === "vending") drawAt(sprites.vending, pr.tx, pr.ty);
-    if (pr.kind === "couch") drawAt(sprites.couch, pr.tx, pr.ty);
-    if (pr.kind === "fridge") drawAt(sprites.fridge, pr.tx, pr.ty);
-    if (pr.kind === "cooler") drawAt(sprites.cooler, pr.tx, pr.ty);
-    if (pr.kind === "waterDispenser") drawAt(sprites.waterDispenser, pr.tx, pr.ty);
+    if (pr.kind === "filingCabinet") drawFilingCabinet(ctx, pr.tx * TILE, pr.ty * TILE);
+    if (pr.kind === "bookshelf") drawBookshelf(ctx, pr.tx * TILE, pr.ty * TILE, pr.tx * 31 + pr.ty * 17);
+    if (pr.kind === "vending") drawVendingMachine(ctx, pr.tx * TILE, pr.ty * TILE);
+    if (pr.kind === "couch") drawCouch(ctx, pr.tx * TILE, pr.ty * TILE);
+    if (pr.kind === "fridge") drawFridge(ctx, pr.tx * TILE, pr.ty * TILE);
+    if (pr.kind === "cooler") drawWaterCooler(ctx, pr.tx * TILE, pr.ty * TILE);
+    if (pr.kind === "waterDispenser") drawWaterCooler(ctx, pr.tx * TILE, pr.ty * TILE);
+
+    // smaller props can stay as sprite-based
     if (pr.kind === "coffeeTable") drawAt(sprites.coffeeTable, pr.tx, pr.ty);
     if (pr.kind === "counter") drawAt(sprites.counter, pr.tx, pr.ty);
     if (pr.kind === "tv") drawAt(sprites.tv, pr.tx, pr.ty);
@@ -2115,10 +2831,10 @@ function drawWorld(
 
   // wall decor / ceiling fixtures
   for (const pr of props) {
-    if (pr.kind === "painting") drawAt(sprites.painting, pr.tx, pr.ty);
+    if (pr.kind === "painting") drawPainting(ctx, pr.tx * TILE, pr.ty * TILE);
     if (pr.kind === "whiteboard") drawAt(sprites.whiteboard, pr.tx, pr.ty);
     if (pr.kind === "frame") drawAt(sprites.frame, pr.tx, pr.ty);
-    if (pr.kind === "wallClock") drawAt(sprites.wallClock, pr.tx, pr.ty);
+    if (pr.kind === "wallClock") drawWallClock(ctx, pr.tx * TILE, pr.ty * TILE);
     if (pr.kind === "ceilingLight") drawAt(sprites.ceilingLight, pr.tx, pr.ty);
 
     if (pr.kind === "galleryFrame") {
@@ -3086,7 +3802,7 @@ export default function OfficePage() {
               onClick={() => {
                 const a = audioRef.current;
                 if (!a) return;
-                a.volume = 0.3;
+                a.volume = 0.7;
                 const next = !muted;
                 a.muted = next;
                 if (!next) {
