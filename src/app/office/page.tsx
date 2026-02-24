@@ -1584,14 +1584,8 @@ export default function OfficePage() {
           rt.anim = rt.path.length ? "walk" : rt.anim;
 
           if (!rt.path.length) {
-            // arrived
-            if (isNearDoor(rt.x, rt.y)) {
-              // shove away from doors: go to seat
-              const seat = SEATS[a.key];
-              const dest = tileCenter(seat.tx, seat.ty);
-              rt.path = aStar(blocked, { x: rt.x, y: rt.y }, dest);
-              rt.goingToSeat = true;
-            } else if (rt.goingToSeat) {
+            // arrived at final destination
+            if (rt.goingToSeat) {
               // reached desk/seat during idle
               const seat = SEATS[a.key];
               rt.dir = seat.face;
