@@ -595,21 +595,22 @@ function buildFloor(): FloorKind[][] {
 
 const SITTING_OFFSET_Y = 4; // px: nudge character down into desk when sitting
 
-// Character ABOVE desk, facing DOWN so you see their face typing
-const DESK_POS: Record<RosterKey, { tx: number; ty: number }> = {
-  yuri: { tx: 3, ty: 5 },
-  glass: { tx: 2, ty: 13 },
-  epstein: { tx: 7, ty: 13 },
-  jarvis: { tx: 2, ty: 17 },
-  friday: { tx: 7, ty: 17 },
-};
-
+// Character ABOVE desk, facing DOWN. Desk directly below, centered on char.
 const SEATS: Record<RosterKey, { tx: number; ty: number; face: Dir }> = {
-  yuri: { tx: 4, ty: 4, face: "down" },
+  yuri: { tx: 4, ty: 3, face: "down" },
   glass: { tx: 3, ty: 12, face: "down" },
   epstein: { tx: 8, ty: 12, face: "down" },
   jarvis: { tx: 3, ty: 16, face: "down" },
   friday: { tx: 8, ty: 16, face: "down" },
+};
+
+// Desk 2x2: placed so character tile is centered on desk top edge
+const DESK_POS: Record<RosterKey, { tx: number; ty: number }> = {
+  yuri: { tx: 3, ty: 4 },
+  glass: { tx: 2, ty: 13 },
+  epstein: { tx: 7, ty: 13 },
+  jarvis: { tx: 2, ty: 17 },
+  friday: { tx: 7, ty: 17 },
 };
 
 function buildProps(): Prop[] {
@@ -973,9 +974,10 @@ function drawWorld(
     const a = liveBy.get(pr.owner);
     const on = a && (a.status === "active" || a.status === "busy");
 
-    // place on top of desk
-    const px = pr.tx * TILE + 8;
-    const py = pr.ty * TILE + 6;
+    // place monitor centered on character's tile (top of desk)
+    const seat = SEATS[pr.owner];
+    const px = seat.tx * TILE + 2; // center 12px monitor on 16px tile
+    const py = pr.ty * TILE + 2;   // top of desk tile
 
     if (on) {
       ctx.save();
