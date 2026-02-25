@@ -1291,7 +1291,7 @@ type Prop =
   | { kind: "execChair"; tx: number; ty: number }
   | { kind: "standingLamp"; tx: number; ty: number }
   | { kind: "visitorSeat"; tx: number; ty: number }
-  | { kind: "plaqueSign"; tx: number; ty: number; text: string };
+;
 
 function buildFloor(): FloorKind[][] {
   const map: FloorKind[][] = [];
@@ -1338,7 +1338,7 @@ const DESK_POS: Record<RosterKey, { tx: number; ty: number }> = {
 };
 
 function buildProps(): Prop[] {
-  // Minimal, clean layout: keep only essentials so the office reads uncluttered.
+  // Keep the scene minimal/clean, but retain key furniture in kitchen + lounge.
   const p: Prop[] = [];
 
   // Desks (functional for seating/pathing)
@@ -1352,9 +1352,22 @@ function buildProps(): Prop[] {
   p.push({ kind: "bookshelf", tx: 1, ty: 7 });
   p.push({ kind: "bookshelf", tx: 17, ty: 9 });
 
-  // Lounge essentials: TV on the wall + couch below it
+  // Kitchen essentials (match the idle "coffee" activity spots)
+  // Vending is 2x2 at (12,2) → stand below at (13,4)
+  p.push({ kind: "vending", tx: 12, ty: 2 });
+  // Counter is 2x1 at (14,2) → stand below at (15,3)
+  p.push({ kind: "counter", tx: 14, ty: 2 });
+  // Water cooler is 1x2 at (18,2) → stand below at (18,4)
+  p.push({ kind: "cooler", tx: 18, ty: 2 });
+  // Fridge (1x2) near the kitchen wall
+  p.push({ kind: "fridge", tx: 16, ty: 2 });
+
+  // Lounge essentials
   p.push({ kind: "tv", tx: 12, ty: SPLIT_Y });
   p.push({ kind: "couch", tx: 11, ty: 12 });
+  // Keep the tiles in front of the couch walkable (dest tiles: 11,13 and 12,13)
+  p.push({ kind: "coffeeTable", tx: 13, ty: 13 });
+  p.push({ kind: "playstation", tx: 12, ty: 11 });
 
   return p;
 }
@@ -1426,7 +1439,7 @@ function buildBlocked(props: Prop[]) {
     if (pr.kind === "execChair") {}
     if (pr.kind === "standingLamp") {}
     if (pr.kind === "visitorSeat") {}
-    if (pr.kind === "plaqueSign") {}
+    // plaqueSign removed
   }
 
   // doors are passable — ensure all 3 tiles of each door are clear
@@ -3103,27 +3116,7 @@ function drawWorldStatic(
       ctx.restore();
     }
 
-    if (pr.kind === "plaqueSign") {
-      const x = pr.tx * TILE;
-      const y = pr.ty * TILE;
-      ctx.save();
-      ctx.globalAlpha = 0.95;
-      ctx.fillStyle = "rgba(2,6,23,0.75)";
-      ctx.strokeStyle = "rgba(56,189,248,0.35)";
-      ctx.lineWidth = 1;
-      const w = Math.max(80, Math.ceil(pr.text.length * 5.5) + 20);
-      const h = 14;
-      ctx.beginPath();
-      ctx.roundRect(x, y, w, h, 6);
-      ctx.fill();
-      ctx.stroke();
-      ctx.font = "8px ui-monospace, SFMono-Regular, Menlo, Monaco";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = "rgba(226,232,240,0.9)";
-      ctx.fillText(pr.text, x + 10, y + h / 2 + 0.5);
-      ctx.restore();
-    }
+    // plaqueSign removed
   }
 
   // neon sign (after feature wall, before characters)
