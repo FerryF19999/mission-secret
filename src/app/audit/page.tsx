@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/trpc/react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 
 export default function AuditPage() {
   const [runs, setRuns] = useState<any[]>([]);
@@ -9,8 +10,8 @@ export default function AuditPage() {
   const [filter, setFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
 
-  const recentRuns = api.agentRuns.getRecent.useQuery({ limit: 100 });
-  const auditStats = api.agentRuns.getAuditStats.useQuery({ hours: 24 });
+  const recentRuns = useQuery((api as any).agentRuns.getRecent, { limit: 100 });
+  const auditStats = useQuery((api as any).agentRuns.getAuditStats, { hours: 24 });
 
   useEffect(() => {
     if (recentRuns.data) {
