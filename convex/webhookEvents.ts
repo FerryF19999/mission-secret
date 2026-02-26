@@ -117,6 +117,72 @@ export const handleAgentRunCompleted = internalMutation({
           lastActive: now,
         });
       }
+
+      // Mark matching calendar event as completed (prepend ✅)
+      const agentId = run.agentId?.toLowerCase() || "";
+      const runId = args.runId?.toLowerCase() || "";
+      
+      // Map agent IDs and run IDs to calendar event title keywords
+      const titleKeywords: string[] = [];
+      if (agentId === "scout" || runId.includes("scout")) titleKeywords.push("Scout");
+      if (agentId === "writer" || runId.includes("writer")) titleKeywords.push("Writer");
+      if (agentId === "jarvis" || runId.includes("jarvis")) {
+        if (runId.includes("brief")) titleKeywords.push("Brief Writer");
+        else if (runId.includes("eval") || runId.includes("post")) {
+          if (runId.includes("post1") || runId.includes("post-1")) titleKeywords.push("Post #1");
+          else if (runId.includes("post2") || runId.includes("post-2")) titleKeywords.push("Post #2");
+          else if (runId.includes("post3") || runId.includes("post-3")) titleKeywords.push("Post #3");
+          else titleKeywords.push("Jarvis");
+        }
+        else if (runId.includes("weekly")) titleKeywords.push("Weekly Strategy");
+        else titleKeywords.push("Jarvis");
+      }
+      if (agentId === "engage" || runId.includes("engage")) {
+        if (runId.includes("pagi") || runId.includes("morning")) titleKeywords.push("Engage — Morning");
+        else if (runId.includes("malam") || runId.includes("evening")) titleKeywords.push("Engage — Evening");
+        else titleKeywords.push("Engage");
+      }
+      if (agentId === "analyst" || runId.includes("analyst")) titleKeywords.push("Analyst");
+      if (agentId === "yuri" || runId.includes("yuri")) {
+        if (runId.includes("cookie")) titleKeywords.push("Cookie");
+        else if (runId.includes("knowledge")) titleKeywords.push("Knowledge Review");
+        else if (runId.includes("calendar")) titleKeywords.push("Calendar");
+        else titleKeywords.push("Yuri");
+      }
+
+      if (titleKeywords.length > 0) {
+        // Find today's calendar events (WIB = UTC+7, look at ±18h window)
+        const dayStart = now - 18 * 60 * 60 * 1000;
+        const dayEnd = now + 18 * 60 * 60 * 1000;
+        
+        const events = await ctx.db
+          .query("scheduledEvents")
+          .withIndex("by_start", (q) => q.gte("startTime", dayStart).lte("startTime", dayEnd))
+          .collect();
+
+        for (const evt of events) {
+          // Skip already marked events
+          if (evt.title.startsWith("✅")) continue;
+
+          const titleLower = evt.title.toLowerCase();
+          const matched = titleKeywords.some(kw => titleLower.includes(kw.toLowerCase()));
+          
+          if (matched) {
+            // For Writer drafts, match post number from runId
+            if (titleLower.includes("writer") && titleLower.includes("draft")) {
+              const postNum = runId.match(/draft(\d)/)?.[1];
+              const evtPostNum = evt.title.match(/#(\d)/)?.[1];
+              if (postNum && evtPostNum && postNum !== evtPostNum) continue;
+            }
+
+            await ctx.db.patch(evt._id, {
+              title: "✅ " + evt.title,
+              updatedAt: now,
+            });
+            break; // Only mark one matching event per completion
+          }
+        }
+      }
     }
   },
 });
@@ -167,6 +233,36 @@ export const handleAgentRunFailed = internalMutation({
           status: "active",
           lastActive: now,
         });
+      }
+
+      // Mark matching calendar event as failed (prepend ❌)
+      const agentId = run.agentId?.toLowerCase() || "";
+      const runId = args.runId?.toLowerCase() || "";
+      const titleKeywords: string[] = [];
+      if (agentId === "scout" || runId.includes("scout")) titleKeywords.push("Scout");
+      if (agentId === "writer" || runId.includes("writer")) titleKeywords.push("Writer");
+      if (agentId === "jarvis" || runId.includes("jarvis")) titleKeywords.push("Jarvis");
+      if (agentId === "engage" || runId.includes("engage")) titleKeywords.push("Engage");
+      if (agentId === "analyst" || runId.includes("analyst")) titleKeywords.push("Analyst");
+      if (agentId === "yuri" || runId.includes("yuri")) titleKeywords.push("Yuri");
+
+      if (titleKeywords.length > 0) {
+        const dayStart = now - 18 * 60 * 60 * 1000;
+        const dayEnd = now + 18 * 60 * 60 * 1000;
+        const events = await ctx.db
+          .query("scheduledEvents")
+          .withIndex("by_start", (q) => q.gte("startTime", dayStart).lte("startTime", dayEnd))
+          .collect();
+
+        for (const evt of events) {
+          if (evt.title.startsWith("✅") || evt.title.startsWith("❌")) continue;
+          const titleLower = evt.title.toLowerCase();
+          const matched = titleKeywords.some(kw => titleLower.includes(kw.toLowerCase()));
+          if (matched) {
+            await ctx.db.patch(evt._id, { title: "❌ " + evt.title, updatedAt: now });
+            break;
+          }
+        }
       }
     }
   },
