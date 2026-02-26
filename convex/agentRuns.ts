@@ -16,6 +16,8 @@ type ResultFile = {
   createdAt: number;
 };
 
+const TriggeredBy = v.optional(v.union(v.literal("cron"), v.literal("human"), v.literal("agent")));
+
 export const create = mutation({
   args: {
     runId: v.string(),
@@ -28,6 +30,12 @@ export const create = mutation({
     task: v.string(),
     status: v.optional(Status),
     startedAt: v.optional(v.number()),
+
+    // Audit fields
+    triggeredBy: TriggeredBy,
+    modelUsed: v.optional(v.string()),
+    toolsUsed: v.optional(v.array(v.string())),
+    notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -47,6 +55,10 @@ export const create = mutation({
         task: args.task,
         status: args.status ?? existing.status,
         startedAt: args.startedAt ?? existing.startedAt,
+        triggeredBy: args.triggeredBy ?? existing.triggeredBy,
+        modelUsed: args.modelUsed ?? existing.modelUsed,
+        toolsUsed: args.toolsUsed ?? existing.toolsUsed,
+        notes: args.notes ?? existing.notes,
       });
       return existing._id;
     }
@@ -63,6 +75,10 @@ export const create = mutation({
       completedAt: undefined,
       result: undefined,
       resultFiles: [],
+      triggeredBy: args.triggeredBy,
+      modelUsed: args.modelUsed,
+      toolsUsed: args.toolsUsed,
+      notes: args.notes,
     });
   },
 });
@@ -104,6 +120,10 @@ export const completeByRunId = mutation({
     runId: v.string(),
     status: v.union(v.literal("completed"), v.literal("failed")),
     result: v.optional(v.string()),
+    modelUsed: v.optional(v.string()),
+    toolsUsed: v.optional(v.array(v.string())),
+    errorLog: v.optional(v.string()),
+    notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const doc = await ctx.db
@@ -113,13 +133,89 @@ export const completeByRunId = mutation({
 
     if (!doc) throw new Error(`agentRuns.completeByRunId: runId not found: ${args.runId}`);
 
+    const now = Date.now();
+    const durationMs = doc.startedAt ? now - doc.startedAt : undefined;
+
     await ctx.db.patch(doc._id, {
       status: args.status,
       result: args.result,
-      completedAt: Date.now(),
+      completedAt: now,
+      durationMs,
+      ...(args.modelUsed ? { modelUsed: args.modelUsed } : {}),
+      ...(args.toolsUsed ? { toolsUsed: args.toolsUsed } : {}),
+      ...(args.errorLog ? { errorLog: args.errorLog } : {}),
+      ...(args.notes ? { notes: args.notes } : {}),
     });
 
     return doc._id;
+  },
+});
+
+// Verify a run (manual approval)
+export const verifyByRunId = mutation({
+  args: {
+    runId: v.string(),
+    verifiedBy: v.string(),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db
+      .query("agentRuns")
+      .withIndex("by_runId", (q) => q.eq("runId", args.runId))
+      .first();
+
+    if (!doc) throw new Error(`agentRuns.verifyByRunId: runId not found: ${args.runId}`);
+
+    await ctx.db.patch(doc._id, {
+      verified: true,
+      verifiedBy: args.verifiedBy,
+      verifiedAt: Date.now(),
+      ...(args.notes ? { notes: args.notes } : {}),
+    });
+
+    return doc._id;
+  },
+});
+
+// Get audit summary stats
+export const getAuditStats = query({
+  args: {
+    hours: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const since = Date.now() - (args.hours ?? 24) * 60 * 60 * 1000;
+    const all = await ctx.db
+      .query("agentRuns")
+      .withIndex("by_started")
+      .order("desc")
+      .take(500);
+
+    const recent = all.filter((r) => r.startedAt >= since);
+
+    const byAgent: Record<string, number> = {};
+    const byStatus: Record<string, number> = {};
+    const byModel: Record<string, number> = {};
+    let totalDuration = 0;
+    let durationCount = 0;
+    let verifiedCount = 0;
+
+    for (const r of recent) {
+      byAgent[r.agentId] = (byAgent[r.agentId] || 0) + 1;
+      byStatus[r.status] = (byStatus[r.status] || 0) + 1;
+      if ((r as any).modelUsed) byModel[(r as any).modelUsed] = (byModel[(r as any).modelUsed] || 0) + 1;
+      if ((r as any).durationMs) { totalDuration += (r as any).durationMs; durationCount++; }
+      if ((r as any).verified) verifiedCount++;
+    }
+
+    return {
+      totalRuns: recent.length,
+      byAgent,
+      byStatus,
+      byModel,
+      avgDurationMs: durationCount > 0 ? Math.round(totalDuration / durationCount) : null,
+      verifiedCount,
+      unverifiedCount: recent.filter((r) => r.status === "completed" && !(r as any).verified).length,
+    };
   },
 });
 

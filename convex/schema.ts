@@ -110,6 +110,17 @@ export default defineSchema({
 
     result: v.optional(v.string()),
 
+    // Audit fields
+    triggeredBy: v.optional(v.union(v.literal("cron"), v.literal("human"), v.literal("agent"))),
+    modelUsed: v.optional(v.string()),
+    toolsUsed: v.optional(v.array(v.string())),
+    durationMs: v.optional(v.number()),
+    verified: v.optional(v.boolean()),
+    verifiedBy: v.optional(v.string()),
+    verifiedAt: v.optional(v.number()),
+    errorLog: v.optional(v.string()),
+    notes: v.optional(v.string()),
+
     // Files produced by the run (stored in Convex storage)
     resultFiles: v.optional(
       v.array(

@@ -36,6 +36,10 @@ http.route({
             task: body.task,
             status: body.status,
             startedAt: body.startedAt,
+            triggeredBy: body.triggeredBy,
+            modelUsed: body.modelUsed,
+            toolsUsed: body.toolsUsed,
+            notes: body.notes,
           });
           break;
 
@@ -43,6 +47,10 @@ http.route({
           await ctx.runMutation((internal as any).webhookEvents.handleAgentRunCompleted, {
             runId: body.runId,
             result: body.result,
+            modelUsed: body.modelUsed,
+            toolsUsed: body.toolsUsed,
+            errorLog: body.errorLog,
+            notes: body.notes,
           });
           break;
 

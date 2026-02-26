@@ -12,6 +12,10 @@ export const handleAgentRunStarted = internalMutation({
     task: v.string(),
     status: v.optional(v.union(v.literal("queued"), v.literal("running"), v.literal("completed"), v.literal("failed"))),
     startedAt: v.optional(v.number()),
+    triggeredBy: v.optional(v.union(v.literal("cron"), v.literal("human"), v.literal("agent"))),
+    modelUsed: v.optional(v.string()),
+    toolsUsed: v.optional(v.array(v.string())),
+    notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -29,6 +33,10 @@ export const handleAgentRunStarted = internalMutation({
       completedAt: undefined,
       result: undefined,
       resultFiles: [],
+      triggeredBy: args.triggeredBy as any,
+      modelUsed: args.modelUsed,
+      toolsUsed: args.toolsUsed,
+      notes: args.notes,
     });
 
     // Auto-create task in Tasks table
@@ -62,6 +70,10 @@ export const handleAgentRunCompleted = internalMutation({
   args: {
     runId: v.string(),
     result: v.optional(v.string()),
+    modelUsed: v.optional(v.string()),
+    toolsUsed: v.optional(v.array(v.string())),
+    errorLog: v.optional(v.string()),
+    notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -72,10 +84,15 @@ export const handleAgentRunCompleted = internalMutation({
       .withIndex("by_runId", (q) => q.eq("runId", args.runId))
       .first();
     if (run) {
+      const durationMs = run.startedAt ? now - run.startedAt : undefined;
       await ctx.db.patch(run._id, {
         status: "completed",
         result: args.result,
         completedAt: now,
+        durationMs,
+        ...(args.modelUsed ? { modelUsed: args.modelUsed } : {}),
+        ...(args.toolsUsed ? { toolsUsed: args.toolsUsed } : {}),
+        ...(args.notes ? { notes: args.notes } : {}),
       });
     }
 
@@ -120,10 +137,13 @@ export const handleAgentRunFailed = internalMutation({
       .withIndex("by_runId", (q) => q.eq("runId", args.runId))
       .first();
     if (run) {
+      const durationMs = run.startedAt ? now - run.startedAt : undefined;
       await ctx.db.patch(run._id, {
         status: "failed",
         result: args.error || args.result,
         completedAt: now,
+        durationMs,
+        errorLog: args.error,
       });
     }
 
