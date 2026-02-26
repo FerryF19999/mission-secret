@@ -302,6 +302,47 @@ export const handleEventCreated = internalMutation({
   },
 });
 
+// Handle agent_registered event — create or update agent in team
+export const handleAgentRegistered = internalMutation({
+  args: {
+    agentId: v.string(),
+    agentName: v.string(),
+    role: v.optional(v.string()),
+    parentAgent: v.optional(v.string()),
+    status: v.optional(v.string()),
+    capabilities: v.optional(v.array(v.string())),
+    avatar: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("agents")
+      .withIndex("by_handle", (q) => q.eq("handle", args.agentId))
+      .first();
+    
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        name: args.agentName,
+        role: args.role ?? existing.role,
+        status: (args.status as any) ?? existing.status,
+        capabilities: args.capabilities ?? existing.capabilities,
+        lastActive: now,
+      });
+    } else {
+      await ctx.db.insert("agents", {
+        name: args.agentName,
+        handle: args.agentId,
+        avatar: args.avatar,
+        role: args.role ?? "Agent",
+        status: (args.status as any) ?? "idle",
+        capabilities: args.capabilities ?? [],
+        lastActive: now,
+        createdAt: now,
+      });
+    }
+  },
+});
+
 // Handle agent_status_update event
 export const handleAgentStatusUpdate = internalMutation({
   args: {

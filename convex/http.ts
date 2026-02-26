@@ -142,6 +142,18 @@ http.route({
           });
           break;
 
+        case "agent_registered":
+          await ctx.runMutation((internal as any).webhookEvents.handleAgentRegistered, {
+            agentId: body.agentId,
+            agentName: body.agentName,
+            role: body.role,
+            parentAgent: body.parentAgent,
+            status: body.status,
+            capabilities: body.capabilities,
+            avatar: body.avatar,
+          });
+          break;
+
         case "agent_status_update":
           await ctx.runMutation((internal as any).webhookEvents.handleAgentStatusUpdate, {
             agentId: body.agentId,
