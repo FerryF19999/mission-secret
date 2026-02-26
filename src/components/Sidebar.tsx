@@ -23,7 +23,6 @@ const navItems = [
   { href: "/memory", icon: Brain, label: "Memory" },
   { href: "/content", icon: FileText, label: "Content" },
   { href: "/runs", icon: Activity, label: "Runs" },
-  { href: "/audit", icon: Activity, label: "Audit" },
   { href: "/calendar", icon: Calendar, label: "Calendar" },
 ];
 
